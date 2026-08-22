@@ -324,8 +324,8 @@
     const onIso = parseThaiDateToIso(onDateStr);
     const offIso = parseThaiDateToIso(offDateStr);
 
-    // If stop is before or equal to start, and same date (or no offDate): overnight schedule (+1 day)
-    if (stop <= start && (!offDateStr || onIso === offIso)) {
+    // In Auto mode: if stop is before or equal to start, schedule overnight (+1 day)
+    if (state.scheduleMode === 'auto' && stop <= start && (!offDateStr || onIso === offIso)) {
       stop = new Date(stop.getTime() + 24 * 60 * 60 * 1000);
     }
 
@@ -1356,11 +1356,19 @@
     const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
 
     if (start && stop) {
-      // บังคับการตั้งเวลาปิดให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('error', 'การตั้งเวลาปิดแอร์ ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-        return;
+      if (!isAutoMode) {
+        // 1. ห้ามตั้งเวลาเปิดย้อนหลัง (ต้องไม่ย้อนหลังเกิน 10 วินาที)
+        if (start.getTime() < now.getTime() - 10000) {
+          showToast('error', 'ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง กรุณากำหนดเวลาในอนาคต');
+          return;
+        }
+
+        // 2. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+        const diffMs = stop.getTime() - start.getTime();
+        if (diffMs < 60 * 1000) {
+          showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+          return;
+        }
       }
 
       // [สำคัญ] บันทึกค่าจะไปสถานะ READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม
@@ -1449,11 +1457,19 @@
     const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
 
     if (start && stop) {
-      // บังคับการตั้งเวลาปิดให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('error', 'การตั้งเวลาปิดแอร์ ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-        return;
+      if (!isAutoMode) {
+        // 1. ห้ามตั้งเวลาเปิดย้อนหลัง (ต้องไม่ย้อนหลังเกิน 10 วินาที)
+        if (start.getTime() < now.getTime() - 10000) {
+          showToast('error', 'ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง กรุณากำหนดเวลาในอนาคต');
+          return;
+        }
+
+        // 2. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+        const diffMs = stop.getTime() - start.getTime();
+        if (diffMs < 60 * 1000) {
+          showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+          return;
+        }
       }
 
       // [สำคัญ] กดเริ่มทำงาน → ไป READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม

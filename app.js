@@ -353,15 +353,15 @@
     setInterval(updateClock, 1000);
   }
 
-  // Web-side ESP32 Watchdog: หากไม่ได้รับสัญญาณจาก ESP32 เกิน 10 วินาที ให้ปรับเป็น OFFLINE ทันที
+  // Web-side ESP32 Watchdog: หากไม่ได้รับสัญญาณจาก ESP32 เกิน 5 วินาที ให้ปรับเป็น OFFLINE ทันที
   function checkEsp32Watchdog() {
     if (state.connected && state.esp32Online && state.lastEsp32Heartbeat > 0) {
       const diffMs = Date.now() - state.lastEsp32Heartbeat;
-      if (diffMs > 10000) { // เกิน 10 วินาทีไม่มีข้อมูลจาก ESP32
+      if (diffMs > 5000) { // เกิน 5 วินาทีไม่มีข้อมูลจาก ESP32 (เท่ากับเวลาที่ Online ส่งข้อมูลมา)
         state.esp32Online = false;
         state.plcOnline = false;
         updateMqttStatusUI();
-        addLog('warning', 'ESP32 ขาดการติดต่อ (Watchdog Timeout > 10s) -> ปรับเป็น OFFLINE');
+        addLog('warning', 'ESP32 ขาดการติดต่อ (Watchdog Timeout > 5s) -> ปรับเป็น OFFLINE');
       }
     }
   }

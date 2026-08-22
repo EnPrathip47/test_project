@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Air Candy Control — ระบบควบคุมแอร์</title>
+  <meta name="description" content="ระบบแดชบอร์ดควบคุมแอร์ — ตั้งเวลา อ่านอุณหภูมิ ดูสถานะ real-time" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== BACKGROUND PARTICLES ===== -->
+  <div class="bg-particles" id="bgParticles"></div>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header" id="header">
+    <div class="header__inner">
+      <div class="header__brand">
+        <div class="header__icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <circle cx="18" cy="18" r="16" stroke="url(#grad1)" stroke-width="2"/>
+            <path d="M18 8 C22 12, 26 14, 26 18 C26 22, 22 26, 18 28 C14 26, 10 22, 10 18 C10 14, 14 12, 18 8Z" fill="url(#grad1)" opacity="0.3"/>
+            <path d="M12 18h12M18 12v12" stroke="url(#grad1)" stroke-width="1.5" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="grad1" x1="0" y1="0" x2="36" y2="36">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#a78bfa"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1 class="header__title">AIR CANDY</h1>
+          <p class="header__subtitle">ระบบควบคุมการทำงานของแอร์</p>
+        </div>
+      </div>
+      <div class="header__status">
+        <button class="header__guide-btn" id="headerGuideBtn" title="เปิดคู่มือการใช้งานและแผนผัง">
+          <span class="guide-btn__icon">📖</span>
+          <span class="guide-btn__text">คู่มือการใช้งาน</span>
+        </button>
+        <div class="mqtt-status-badges">
+          <span class="mqtt-status-badge mqtt-status-badge--offline" id="esp32Status" title="ESP32-S3 Gateway">
+            <span class="mqtt-status-badge__dot"></span>
+            ESP32: OFFLINE
+          </span>
+          <span class="mqtt-status-badge mqtt-status-badge--offline" id="plcStatus" title="PLC AMX FX3U">
+            <span class="mqtt-status-badge__dot"></span>
+            PLC: OFFLINE
+          </span>
+          <span class="mqtt-status-badge mqtt-status-badge--offline" id="mqttStatus" title="HiveMQ Cloud MQTT">
+            <span class="mqtt-status-badge__dot"></span>
+            MQTT: OFFLINE
+          </span>
+          <span class="mqtt-status-badge mqtt-status-badge--offline" id="modbusStatus" title="Modbus TCP Link">
+            <span class="mqtt-status-badge__dot"></span>
+            MODBUS: OFFLINE
+          </span>
+        </div>
+        <div class="connection-badge" id="connectionBadge">
+          <span class="connection-badge__dot"></span>
+          <span class="connection-badge__text">ไม่ได้เชื่อมต่อ</span>
+        </div>
+        <div class="header__clock" id="headerClock">--:--:--</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main">
+
+    <!-- ── TEMPERATURE SENSORS ── -->
+    <section class="section" id="sectionTemperature">
+      <div class="section__header">
+        <h2 class="section__title">
+          <span class="section__icon">🌡️</span>
+          อุณหภูมิเซนเซอร์ Real-time
+        </h2>
+        <span class="section__badge" id="tempUpdateBadge">-- อัปเดตล่าสุด</span>
+      </div>
+      <div class="sensor-grid">
+        <!-- Sensor 1 -->
+        <div class="sensor-card" id="sensorCard1">
+          <div class="sensor-card__ring">
+            <svg class="sensor-card__svg" viewBox="0 0 120 120">
+              <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
+              <circle class="sensor-card__progress" id="sensorProgress1" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="sensor-card__value">
+              <span class="sensor-card__temp" id="sensorTemp1">--.-</span>
+              <span class="sensor-card__unit">°C</span>
+            </div>
+          </div>
+          <div class="sensor-card__label">เซนเซอร์ 1</div>
+          <div class="sensor-card__location">Indoor (ภายในห้อง)</div>
+        </div>
+        <!-- Sensor 2 -->
+        <div class="sensor-card" id="sensorCard2">
+          <div class="sensor-card__ring">
+            <svg class="sensor-card__svg" viewBox="0 0 120 120">
+              <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
+              <circle class="sensor-card__progress" id="sensorProgress2" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="sensor-card__value">
+              <span class="sensor-card__temp" id="sensorTemp2">--.-</span>
+              <span class="sensor-card__unit">°C</span>
+            </div>
+          </div>
+          <div class="sensor-card__label">เซนเซอร์ 2</div>
+          <div class="sensor-card__location">Outdoor (ภายนอก)</div>
+        </div>
+        <!-- Sensor 3 -->
+        <div class="sensor-card" id="sensorCard3">
+          <div class="sensor-card__ring">
+            <svg class="sensor-card__svg" viewBox="0 0 120 120">
+              <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
+              <circle class="sensor-card__progress" id="sensorProgress3" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="sensor-card__value">
+              <span class="sensor-card__temp" id="sensorTemp3">--.-</span>
+              <span class="sensor-card__unit">°C</span>
+            </div>
+          </div>
+          <div class="sensor-card__label">เซนเซอร์ 3</div>
+          <div class="sensor-card__location">Supply Air (ช่องลมแอร์)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STATUS INDICATORS (3 หลอด) ── -->
+    <section class="section" id="sectionStatus">
+      <div class="section__header">
+        <h2 class="section__title">
+          <span class="section__icon">🚦</span>
+          สถานะหลอดไฟเตือน 3 สี
+        </h2>
+        <span class="state-badge" id="currentStateBadge">IDLE (สภาวะเริ่มต้น)</span>
+      </div>
+      <div class="indicator-grid">
+        <!-- ไฟเหลือง: Step 1 (IDLE - กระพริบ 1s) -->
+        <div class="indicator" id="indicatorYellow">
+          <div class="indicator__light indicator__light--amber-blink" id="lightYellow">
+            <div class="indicator__glow"></div>
+          </div>
+          <div class="indicator__info">
+            <span class="indicator__label">ไฟเหลือง (Step 1: IDLE)</span>
+            <span class="indicator__state" id="stateYellow">IDLE</span>
+            <span class="indicator__desc" id="descYellow">⚡ กระพริบ 1s: รอตั้งเวลา/รีเซท | ❌ ดับ: ตั้งเวลาแล้ว</span>
+          </div>
+        </div>
+        <!-- ไฟเขียว: Step 2 (READY - กระพริบ 1s) / Step 3 (RUNNING - ติดค้าง) -->
+        <div class="indicator" id="indicatorGreen">
+          <div class="indicator__light indicator__light--off" id="lightGreen">
+            <div class="indicator__glow"></div>
+          </div>
+          <div class="indicator__info">
+            <span class="indicator__label">ไฟเขียว (Step 2/3)</span>
+            <span class="indicator__state" id="stateGreen">OFF</span>
+            <span class="indicator__desc" id="descGreen">⚡ กระพริบ 1s: READY (รอถึงเวลาเริ่ม) | 🟢 ติดค้าง: ทำงาน</span>
+          </div>
+        </div>
+        <!-- ไฟแดง: Step 4 (TIMEOUT - กระพริบ 1s) / Case 2 (STOP - ติดค้าง) -->
+        <div class="indicator" id="indicatorRed">
+          <div class="indicator__light indicator__light--off" id="lightRed">
+            <div class="indicator__glow"></div>
+          </div>
+          <div class="indicator__info">
+            <span class="indicator__label">ไฟแดง (Step 4 / Stop)</span>
+            <span class="indicator__state" id="stateRed">OFF</span>
+            <span class="indicator__desc" id="descRed">⚡ กระพริบ 1s: ครบเวลา | 🔴 ติดค้าง: กด Stop (ต้องกดรีเซท)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- State Flow Diagram -->
+      <div class="state-flow">
+        <div class="state-flow__step state-flow__step--active" id="flowIdle">
+          <div class="state-flow__dot state-flow__dot--amber-blink"></div>
+          <span>Step 1: IDLE (เหลืองกระพริบ)</span>
+        </div>
+        <div class="state-flow__arrow">➔</div>
+        <div class="state-flow__step" id="flowReady">
+          <div class="state-flow__dot state-flow__dot--green-blink"></div>
+          <span>Step 2: READY (เขียวกระพริบ)</span>
+        </div>
+        <div class="state-flow__arrow">➔</div>
+        <div class="state-flow__step" id="flowRunning">
+          <div class="state-flow__dot state-flow__dot--green"></div>
+          <span>Step 3: RUNNING (เขียวติดค้าง)</span>
+        </div>
+        <div class="state-flow__arrow">➔</div>
+        <div class="state-flow__step" id="flowStopped">
+          <div class="state-flow__dot state-flow__dot--red"></div>
+          <span>Step 4/Stop (แดงกระพริบ/ติดค้าง)</span>
+        </div>
+        <div class="state-flow__arrow state-flow__arrow--reset">🔄 กดรีเซทวนลูป</div>
+      </div>
+    </section>
+
+    <!-- ── AC CONTROL ── -->
+    <section class="section section--control" id="sectionControl">
+      <div class="section__header">
+        <h2 class="section__title">
+          <span class="section__icon">❄️</span>
+          แผงควบคุมแอร์
+        </h2>
+      </div>
+      <div class="control-layout">
+
+        <!-- Schedule Settings -->
+        <div class="control-card" id="scheduleCard">
+          <div class="control-card__header">
+            <h3 class="control-card__title">⏰ ตั้งเวลาเปิด-ปิดแอร์ (Schedule)</h3>
+            <span class="schedule-status-tag" id="scheduleStatusTag">⚠️ รอการตั้งเวลา</span>
+          </div>
+
+          <!-- ═══ AUTO / MANUAL MODE TOGGLE ═══ -->
+          <div class="mode-toggle-bar" id="modeToggleBar">
+            <div class="mode-toggle">
+              <button type="button" class="mode-toggle__btn mode-toggle__btn--auto mode-toggle__btn--active" id="modeAutoBtn" title="Auto: ทำงานทุกวัน 08:00-17:00 ปรับได้แค่อุณหภูมิ">
+                <span class="mode-toggle__icon">🔄</span>
+                <span class="mode-toggle__label">AUTO</span>
+              </button>
+              <button type="button" class="mode-toggle__btn mode-toggle__btn--manual" id="modeManualBtn" title="Manual: ปรับวันเวลาและอุณหภูมิได้อิสระ">
+                <span class="mode-toggle__icon">🛠️</span>
+                <span class="mode-toggle__label">MANUAL</span>
+              </button>
+              <div class="mode-toggle__slider" id="modeSlider"></div>
+            </div>
+            <div class="mode-info" id="modeInfo">
+              <span class="mode-info__badge mode-info__badge--auto" id="modeInfoBadge">🔄 AUTO MODE</span>
+              <span class="mode-info__desc" id="modeInfoDesc">ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ</span>
+            </div>
+          </div>
+
+          <div class="control-card__body">
+            <div class="schedule-grid">
+              <!-- เปิดแอร์ (ON) -->
+              <div class="schedule-group" id="scheduleGroupOn">
+                <div class="schedule-group__title">🟢 เปิดแอร์ (ON)</div>
+                <div class="schedule-inputs">
+                  <div class="schedule-field" id="onDateField">
+                    <label class="schedule-field__label" for="onDate">📅 เลือกวันที่เปิด (ปฏิทิน)</label>
+                    <input type="date" class="schedule-field__input schedule-field__input--date" id="onDate" />
+                  </div>
+                  <div class="schedule-field">
+                    <label class="schedule-field__label" for="onTime">เวลา (ชช:นน)</label>
+                    <input type="time" class="schedule-field__input" id="onTime" />
+                  </div>
+                </div>
+                <!-- Auto Mode Lock Overlay -->
+                <div class="schedule-group__lock" id="onGroupLock">
+                  <span class="schedule-group__lock-icon">🔒</span>
+                  <span class="schedule-group__lock-text">Auto Mode: 08:00 (ฟิกซ์)</span>
+                </div>
+              </div>
+
+              <!-- ปิดแอร์ (OFF) -->
+              <div class="schedule-group" id="scheduleGroupOff">
+                <div class="schedule-group__title">🔴 ปิดแอร์ (OFF)</div>
+                <div class="schedule-inputs">
+                  <div class="schedule-field" id="offDateField">
+                    <label class="schedule-field__label" for="offDate">📅 เลือกวันที่ปิด (ปฏิทิน)</label>
+                    <input type="date" class="schedule-field__input schedule-field__input--date" id="offDate" />
+                  </div>
+                  <div class="schedule-field">
+                    <label class="schedule-field__label" for="offTime">เวลา (ชช:นน)</label>
+                    <input type="time" class="schedule-field__input" id="offTime" />
+                  </div>
+                </div>
+                <!-- Auto Mode Lock Overlay -->
+                <div class="schedule-group__lock" id="offGroupLock">
+                  <span class="schedule-group__lock-icon">🔒</span>
+                  <span class="schedule-group__lock-text">Auto Mode: 17:00 (ฟิกซ์)</span>
+                </div>
+              </div>
+
+              <!-- ตั้งอุณหภูมิ (TARGET TEMP) -->
+              <div class="schedule-group schedule-group--temp">
+                <div class="schedule-group__title">❄️ ตั้งค่าอุณหภูมิแอร์ (Target Temp)</div>
+                <div class="schedule-inputs">
+                  <div class="schedule-field">
+                    <label class="schedule-field__label" for="targetTemp">อุณหภูมิ (18°C - 27°C)</label>
+                    <div class="temp-control-bar">
+                      <button type="button" class="temp-btn temp-btn--minus" id="tempMinusBtn" title="ลดอุณหภูมิ">-</button>
+                      <div class="temp-input-wrapper">
+                        <input type="number" class="schedule-field__input schedule-field__input--temp" id="targetTemp" min="18" max="27" value="25" step="1" placeholder="25" />
+                        <span class="temp-input-unit">°C</span>
+                      </div>
+                      <button type="button" class="temp-btn temp-btn--plus" id="tempPlusBtn" title="เพิ่มอุณหภูมิ">+</button>
+                    </div>
+                  </div>
+                  <div class="temp-presets">
+                    <span class="temp-preset-label">ทางเลือกด่วน:</span>
+                    <button type="button" class="temp-chip" data-temp="18">18°C</button>
+                    <button type="button" class="temp-chip" data-temp="20">20°C</button>
+                    <button type="button" class="temp-chip" data-temp="22">22°C</button>
+                    <button type="button" class="temp-chip" data-temp="24">24°C</button>
+                    <button type="button" class="temp-chip temp-chip--active" data-temp="25">25°C</button>
+                    <button type="button" class="temp-chip" data-temp="27">27°C</button>
+                  </div>
+                  <div class="schedule-field schedule-field--hint">
+                    <span class="temp-min-badge">⚠️ รองรับอุณหภูมิ 18°C - 27°C</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Combined Remote & Action Control Card -->
+        <div class="control-card unified-control-card" id="actionCard">
+          <div class="control-card__header">
+            <h3 class="control-card__title">🎛️ แผงสั่งการ & รีโมทแอร์ (Remote & Controls)</h3>
+            <span class="mqtt-last-cmd" id="mqttLastCmd">รอคำสั่ง...</span>
+          </div>
+          <div class="control-card__body">
+            <div class="combined-control-section">
+
+              <!-- Sub-section 1: MQTT Remote Settings -->
+              <div class="remote-subpanel">
+                <div class="control-section-header">
+                  <span>📡 ตั้งค่ารีโมทแอร์ (Remote Settings)</span>
+                </div>
+                <div class="mqtt-control-grid mqtt-control-grid--3cols">
+                  <!-- Mode -->
+                  <div class="mqtt-field">
+                    <label class="mqtt-field__label" for="modeSelect">🌀 Mode</label>
+                    <select class="mqtt-select" id="modeSelect">
+                      <option value="0">AUTO</option>
+                      <option value="1" selected>COOL</option>
+                      <option value="2">DRY</option>
+                      <option value="3">FAN</option>
+                    </select>
+                  </div>
+                  <!-- Fan -->
+                  <div class="mqtt-field">
+                    <label class="mqtt-field__label" for="fanSelect">💨 Fan Speed</label>
+                    <select class="mqtt-select" id="fanSelect">
+                      <option value="0" selected>AUTO</option>
+                      <option value="1">LOW</option>
+                      <option value="2">MEDIUM</option>
+                      <option value="3">HIGH</option>
+                    </select>
+                  </div>
+                  <!-- Temperature Display -->
+                  <div class="mqtt-field">
+                    <label class="mqtt-field__label">🌡️ Target Temp</label>
+                    <div class="mqtt-temp-display" id="mqttTempDisplay">25°C</div>
+                  </div>
+                </div>
+                <!-- SEND Button for Mode/Fan updates -->
+                <div class="mqtt-send-area">
+                  <button type="button" class="mqtt-send-btn" id="btnSendMqtt">
+                    <span class="mqtt-send-btn__icon">📤</span>
+                    <span class="mqtt-send-btn__text">ส่งคำสั่งรีโมท (SEND MQTT)</span>
+                  </button>
+                  <div class="mqtt-error-msg" id="mqttErrorMsg"></div>
+                </div>
+              </div>
+
+              <!-- Divider -->
+              <div class="control-divider">
+                <span>ปุ่มคำสั่งควบคุมระบบ & เปิด-ปิดแอร์</span>
+              </div>
+
+              <!-- Sub-section 2: System Action Buttons (Unified Start/ON & Stop/OFF) -->
+              <div class="action-subpanel">
+                <div class="action-buttons">
+                  <button class="action-btn action-btn--save" id="btnSave">
+                    <div class="action-btn__icon">💾</div>
+                    <div class="action-btn__text">
+                      <span class="action-btn__label">บันทึกค่า</span>
+                      <span class="action-btn__hint" id="btnSaveHint"></span>
+                    </div>
+                  </button>
+                  <button class="action-btn action-btn--start" id="btnStart" disabled title="กรุณากดบันทึกเวลาก่อนกดเริ่มทำงาน">
+                    <div class="action-btn__icon">🟢</div>
+                    <div class="action-btn__text">
+                      <span class="action-btn__label">เริ่มทำงาน (ON)</span>
+                      <span class="action-btn__hint" id="btnStartHint">ต้องกดบันทึกค่าก่อน</span>
+                    </div>
+                  </button>
+                  <button class="action-btn action-btn--stop" id="btnStop" disabled>
+                    <div class="action-btn__icon">🔴</div>
+                    <div class="action-btn__text">
+                      <span class="action-btn__label">หยุดทำงาน (OFF)</span>
+                      <span class="action-btn__hint">กดเพื่อปิดแอร์</span>
+                    </div>
+                  </button>
+                  <button class="action-btn action-btn--reset" id="btnReset" disabled>
+                    <div class="action-btn__icon">🔄</div>
+                    <div class="action-btn__text">
+                      <span class="action-btn__label">รีเซท</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SETTINGS ── -->
+    <section class="section section--settings" id="sectionSettings">
+      <div class="section__header">
+        <h2 class="section__title">
+          <span class="section__icon">⚙️</span>
+          การตั้งค่าการเชื่อมต่อ
+        </h2>
+      </div>
+      <div class="settings-panel">
+        <div class="settings-field">
+          <label class="settings-field__label" for="mqttHostDisplay">ที่อยู่ HiveMQ Cloud MQTT Broker (WSS 8884)</label>
+          <input type="text" class="settings-field__input" id="mqttHostDisplay" value="wss://35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud:8884/mqtt" readonly />
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn--connect" id="connectBtn">
+            <span class="btn__icon">🔌</span>
+            เชื่อมต่อ MQTT
+          </button>
+          <button class="btn btn--disconnect" id="disconnectBtn" disabled>
+            <span class="btn__icon">⛔</span>
+            ตัดการเชื่อมต่อ
+          </button>
+          <button class="btn btn--demo" id="demoBtn">
+            <span class="btn__icon">🧪</span>
+            โหมดจำลอง (Demo)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LOG ── -->
+    <section class="section section--log" id="sectionLog">
+      <div class="section__header">
+        <h2 class="section__title">
+          <span class="section__icon">📋</span>
+          บันทึกประวัติการทำงาน
+        </h2>
+        <button class="btn btn--small btn--ghost" id="clearLogBtn">ล้างประวัติ</button>
+      </div>
+      <div class="log-container" id="logContainer">
+        <div class="log-empty">ยังไม่มีประวัติการทำงาน...</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <p>ระบบควบคุมแอร์ Air Candy Control &copy; 2026 — HiveMQ MQTT Cloud + ESP32-S3</p>
+  </footer>
+
+  <!-- ===== TOAST NOTIFICATIONS ===== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ===== QUICK GUIDE MODAL ===== -->
+  <div class="guide-modal" id="guideModal" aria-hidden="true">
+    <div class="guide-modal__backdrop" id="guideModalBackdrop"></div>
+    <div class="guide-modal__dialog">
+      <div class="guide-modal__header">
+        <h3 class="guide-modal__title">📖 คู่มือการใช้งาน & Program Flowchart</h3>
+        <button class="guide-modal__close" id="guideModalClose">&times;</button>
+      </div>
+      <div class="guide-modal__body">
+        <img src="docs/latest_user_guide_v2_1.png" alt="Air Candy User Manual" class="guide-modal__img" />
+        <div class="guide-modal__steps">
+          <div class="guide-step">
+            <span class="guide-step__num">1</span>
+            <div><strong>ระบบ HiveMQ MQTT:</strong> สื่อสารตรงผ่าน HiveMQ Cloud WSS (Port 8884) ระหว่าง Web และ ESP32-S3</div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step__num">2</span>
+            <div><strong>ตั้งเวลา & อุณหภูมิ:</strong> กรอกเวลาเปิด-ปิด และอุณหภูมิ (ห้ามต่ำกว่า 15°C)</div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step__num">3</span>
+            <div><strong>กดบันทึกค่า:</strong> ต้องกดปุ่ม 💾 บันทึกค่า เพื่อปลดล็อกปุ่มเริ่มทำงาน</div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step__num">4</span>
+            <div><strong>สภาวะ READY (เขียวกระพริบ 1s):</strong> รอจนกระทั่งถึงเวลาเปิด แอร์จึงทำงาน (เขียวติดค้าง)</div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step__num">5</span>
+            <div><strong>ไฟแดงล็อกระบบ (RESET):</strong> หากขึ้นไฟแดง ต้องกดปุ่ม 🔄 รีเซท เพื่อเริ่มใหม่เสมอ</div>
+          </div>
+        </div>
+      </div>
+      <div class="guide-modal__footer">
+        <a href="docs/mobile_guide.html" target="_blank" class="btn btn--connect" style="text-decoration:none;">🌐 เปิดหน้าเว็บคู่มือฉบับเต็ม</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="mqtt.min.js"></script>
+  <script>if (typeof mqtt === 'undefined') document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js"><\/script>');</script>
+  <script src="app.js"></script>
+</body>
+</html>

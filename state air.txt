@@ -1,0 +1,28 @@
+ON air temp 18 c uint8_t stateON
+
+ON air temp 19 c uint8_t stateON
+
+ON air temp 20 c uint8_t stateON
+
+ON air temp 21 c uint8_t stateON
+
+ON air temp 22 c uint8_t stateON
+
+ON air temp 23 c uint8_t stateON
+
+ON air temp 24 c uint8_t stateON
+
+ON air temp 25 c uint8_t stateON[22] = {
+  0xA6, 0x9C, 0x80, 0x00,
+  0x40, 0xA0, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+  0x05, 0xA7, 0xB7, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+  0x00, 0xB7
+};
+
+
+ON air temp 26 c uint8_t stateON
+
+ON air temp 27 c uint8_t stateON
+

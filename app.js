@@ -266,7 +266,27 @@
     if (DOM.offDate) DOM.offDate.min = todayIso;
 
     applyScheduleMode(state.scheduleMode);
-    updateSystemState('idle');
+    
+    // In AUTO Mode: default to READY (Green Blinking) or RUNNING (Green Solid), eliminating Yellow light
+    if (state.scheduleMode === 'auto') {
+      const todayIso = getTodayIso();
+      state.schedule.onDate = todayIso;
+      state.schedule.offDate = todayIso;
+      state.schedule.onTime = '08:00';
+      state.schedule.offTime = '17:00';
+      state.schedule.enabled = true;
+
+      const now = new Date();
+      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+      if (start && stop && now >= start && now < stop) {
+        updateSystemState('running');
+      } else {
+        updateSystemState('ready');
+      }
+    } else {
+      updateSystemState('idle');
+    }
+
     updateMqttStatusUI();
     updateMqttTempDisplay();
     addLog('info', `ระบบพร้อมใช้งาน — ใช้งาน HiveMQ Cloud MQTT over WSS (Port ${CONFIG.mqttWebSocketPort})`);
@@ -388,13 +408,13 @@
         showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ระบบเริ่มทำงานอัตโนมัติ`);
       }
     }
-    // When running, reach off time -> timeout
+    // When running, reach off time -> timeout (Complete schedule)
     else if (state.systemState === 'running') {
       if (now >= stop) {
         updateSystemState('timeout');
-        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan);
-        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3`);
-        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ไฟแดงกระพริบ (กดรีเซทเพื่อเริ่มใหม่)`);
+        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 1); // [ Complete Flag set M500 ]
+        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และเซ็ต Complete Flag M500 ไปยัง PLC`);
+        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — เซ็ต Complete Flag M500 (กดรีเซทเพื่อเริ่มใหม่)`);
       }
     }
   }
@@ -706,14 +726,27 @@
     if (DOM.onTime) DOM.onTime.disabled = isAuto;
     if (DOM.offTime) DOM.offTime.disabled = isAuto;
 
-    // In auto mode, set fixed values
+    // In auto mode, set fixed values and enable READY state (Green Blinking)
     if (isAuto) {
       if (DOM.onTime) DOM.onTime.value = '08:00';
       if (DOM.offTime) DOM.offTime.value = '17:00';
-      // Use today's date
       const todayIso = getTodayIso();
       if (DOM.onDate) DOM.onDate.value = todayIso;
       if (DOM.offDate) DOM.offDate.value = todayIso;
+
+      state.schedule.onDate = todayIso;
+      state.schedule.offDate = todayIso;
+      state.schedule.onTime = '08:00';
+      state.schedule.offTime = '17:00';
+      state.schedule.enabled = true;
+
+      const now = new Date();
+      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+      if (start && stop && now >= start && now < stop) {
+        updateSystemState('running');
+      } else {
+        updateSystemState('ready');
+      }
     }
 
     // Refresh action buttons based on selected mode
@@ -879,12 +912,14 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan) {
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0) {
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
     const m = Number(mode);
     const f = Number(fan);
+    const c = Number(complete) || 0;
+    const r = Number(reset) || 0;
 
     const validationErrors = validatePayloadValues(p, t, m, f);
     if (validationErrors.length > 0) {
@@ -898,7 +933,9 @@
       power: p,
       temperature: t,
       mode: m,
-      fan: f
+      fan: f,
+      complete: c,
+      reset: r
     };
     const payloadStr = JSON.stringify(payloadObj);
 
@@ -1003,15 +1040,22 @@
       updateTempBadge();
     }
 
-    // PLC Status Lights (Y0: Green, Y1: Yellow, Y2: Red)
-    if (mqttData.y0_green !== undefined || mqttData.y1_yellow !== undefined || mqttData.y2_red !== undefined) {
-      if (mqttData.y2_red === 1) {
+    // PLC Status Lights (Y0: Red, Y1: Yellow, Y2: Green)
+    const redCoil = (mqttData.y0_red !== undefined) ? mqttData.y0_red : mqttData.y2_red;
+    const yellowCoil = mqttData.y1_yellow;
+    const greenCoil = (mqttData.y2_green !== undefined) ? mqttData.y2_green : mqttData.y0_green;
+
+    if (redCoil !== undefined || yellowCoil !== undefined || greenCoil !== undefined) {
+      if (redCoil === 1) {
         updateSystemState('stopped');
-      } else if (mqttData.y0_green === 1) {
-        updateSystemState('running');
-      } else if (mqttData.y1_yellow === 1) {
-        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น idle ถ้าอยู่ในสถานะ ready (ตั้งเวลารอทำงาน) หรือ timeout
-        if (state.systemState !== 'ready' && state.systemState !== 'timeout') {
+      } else if (greenCoil === 1) {
+        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น running ถ้าอยู่ในสถานะ timeout หรือ stopped (ระบบล็อกไฟแดงอยู่)
+        if (state.systemState !== 'timeout' && state.systemState !== 'stopped') {
+          updateSystemState('running');
+        }
+      } else if (yellowCoil === 1) {
+        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น idle ถ้าอยู่ในสถานะ ready, timeout หรือ stopped
+        if (state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
           updateSystemState('idle');
         }
       }
@@ -1022,7 +1066,7 @@
           updateSystemState('running');
         }
       } else if (mqttData.machine_state === 'stopped' && state.systemState === 'running') {
-        if (state.systemState !== 'ready') {
+        if (state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
           updateSystemState('idle');
         }
       }
@@ -1543,7 +1587,8 @@
     if (DOM.onDate) DOM.onDate.value = '';
     if (DOM.offDate) DOM.offDate.value = '';
 
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan);
+    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
     saveSettings();
 
     // Re-apply schedule mode (restore auto mode lock overlays if needed)

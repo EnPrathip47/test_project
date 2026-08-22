@@ -978,16 +978,21 @@
       } else if (mqttData.y0_green === 1) {
         updateSystemState('running');
       } else if (mqttData.y1_yellow === 1) {
-        updateSystemState('idle');
+        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น idle ถ้าอยู่ในสถานะ ready (ตั้งเวลารอทำงาน) หรือ timeout
+        if (state.systemState !== 'ready' && state.systemState !== 'timeout') {
+          updateSystemState('idle');
+        }
       }
     } else {
       // Machine State UI Sync Fallback
       if (mqttData.machine_state === 'running' || state.acPower === 1) {
-        if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+        if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'ready') {
           updateSystemState('running');
         }
       } else if (mqttData.machine_state === 'stopped' && state.systemState === 'running') {
-        updateSystemState('idle');
+        if (state.systemState !== 'ready') {
+          updateSystemState('idle');
+        }
       }
     }
 

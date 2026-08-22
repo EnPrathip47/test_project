@@ -347,9 +347,23 @@
         DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false });
       }
       checkScheduleState(now);
+      checkEsp32Watchdog();
     }
     updateClock();
     setInterval(updateClock, 1000);
+  }
+
+  // Web-side ESP32 Watchdog: หากไม่ได้รับสัญญาณจาก ESP32 เกิน 10 วินาที ให้ปรับเป็น OFFLINE ทันที
+  function checkEsp32Watchdog() {
+    if (state.connected && state.esp32Online && state.lastEsp32Heartbeat > 0) {
+      const diffMs = Date.now() - state.lastEsp32Heartbeat;
+      if (diffMs > 10000) { // เกิน 10 วินาทีไม่มีข้อมูลจาก ESP32
+        state.esp32Online = false;
+        state.plcOnline = false;
+        updateMqttStatusUI();
+        addLog('warning', 'ESP32 ขาดการติดต่อ (Watchdog Timeout > 10s) -> ปรับเป็น OFFLINE');
+      }
+    }
   }
 
   function checkScheduleState(now) {
@@ -763,12 +777,16 @@
           if (topic === CONFIG.topicAvailability) {
             const isOnline = (msgStr.toLowerCase() === 'online');
             state.esp32Online = isOnline;
-            if (!isOnline) {
+            if (isOnline) {
+              state.lastEsp32Heartbeat = Date.now();
+            } else {
               state.plcOnline = false;
             }
             updateMqttStatusUI();
             addLog('info', `ESP32 Status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
           } else if (topic === CONFIG.topicStatus) {
+            state.lastEsp32Heartbeat = Date.now();
+            state.esp32Online = true;
             const statusData = JSON.parse(msgStr);
             handleMqttStatus(statusData);
           }

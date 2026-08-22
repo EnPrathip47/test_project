@@ -193,7 +193,9 @@
     flowStopped: document.getElementById('flowStopped'),
 
     // Settings
-    mqttHostDisplay: document.getElementById('mqttHostDisplay'),
+    mqttHostInput: document.getElementById('mqttHostInput'),
+    mqttUsernameInput: document.getElementById('mqttUsernameInput'),
+    mqttPasswordInput: document.getElementById('mqttPasswordInput'),
     connectBtn: document.getElementById('connectBtn'),
     disconnectBtn: document.getElementById('disconnectBtn'),
     demoBtn: document.getElementById('demoBtn'),
@@ -538,6 +540,19 @@
 
   // ── Load Settings from localStorage ──
   function loadSettings() {
+    const savedMqtt = localStorage.getItem('airCandyMqttConfig');
+    if (savedMqtt) {
+      try {
+        const m = JSON.parse(savedMqtt);
+        if (m.mqttHost) CONFIG.mqttHost = m.mqttHost;
+        if (m.mqttUsername) CONFIG.mqttUsername = m.mqttUsername;
+        if (m.mqttPassword) CONFIG.mqttPassword = m.mqttPassword;
+      } catch (e) {}
+    }
+    if (DOM.mqttHostInput) DOM.mqttHostInput.value = CONFIG.mqttHost;
+    if (DOM.mqttUsernameInput) DOM.mqttUsernameInput.value = CONFIG.mqttUsername;
+    if (DOM.mqttPasswordInput) DOM.mqttPasswordInput.value = CONFIG.mqttPassword;
+
     const saved = localStorage.getItem('airCandySettings') || localStorage.getItem('processAirSettings');
     if (saved) {
       try {
@@ -667,25 +682,60 @@
       state.mqttClient = null;
     }
 
-    const brokerUrl = `wss://${CONFIG.mqttHost}:${CONFIG.mqttWebSocketPort}${CONFIG.mqttPath}`;
-    addLog('info', `กำลังเชื่อมต่อ HiveMQ Cloud (${CONFIG.mqttHost}:${CONFIG.mqttWebSocketPort})...`);
+    const rawHost = (DOM.mqttHostInput?.value || CONFIG.mqttHost || '').trim();
+    const host = rawHost.replace(/^wss?:\/\//i, '').replace(/\/.*$/, '').split(':')[0];
+    const username = (DOM.mqttUsernameInput?.value || CONFIG.mqttUsername || '').trim();
+    const password = (DOM.mqttPasswordInput?.value || CONFIG.mqttPassword || '').trim();
+
+    if (!host || !username || !password) {
+      showToast('error', 'กรุณากรอกข้อมูล Host, Username และ Password สำหรับ HiveMQ ให้ครบถ้วน');
+      addLog('error', 'ไม่สามารถเชื่อมต่อได้ — กรอกข้อมูล Username/Password ไม่ครบ');
+      return;
+    }
+
+    CONFIG.mqttHost = host;
+    CONFIG.mqttUsername = username;
+    CONFIG.mqttPassword = password;
+
+    try {
+      localStorage.setItem('airCandyMqttConfig', JSON.stringify({
+        mqttHost: host,
+        mqttUsername: username,
+        mqttPassword: password,
+      }));
+    } catch(e) {}
+
+    const brokerUrl = `wss://${host}:${CONFIG.mqttWebSocketPort}${CONFIG.mqttPath}`;
+    addLog('info', `กำลังเชื่อมต่อ HiveMQ Cloud (${host}:${CONFIG.mqttWebSocketPort}) [User: ${username}]...`);
 
     const clientId = 'WebDashboard-' + Math.random().toString(16).substring(2, 10);
 
     if (typeof mqtt === 'undefined') {
-      addLog('error', 'ไม่พบไลบรารี MQTT.js! กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
-      showToast('error', 'ไม่พบไลบรารี MQTT.js');
+      addLog('info', 'กำลังดึงไลบรารี MQTT.js จาก CDN...');
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js';
+      script.onload = () => {
+        addLog('success', 'โหลดไลบรารี MQTT.js สำเร็จ! กำลังเริ่มเชื่อมต่อ MQTT...');
+        connectMqttBroker();
+      };
+      script.onerror = () => {
+        addLog('error', 'ไม่สามารถโหลดไลบรารี MQTT.js ได้');
+        showToast('error', 'ไม่พบไลบรารี MQTT.js (กรุณาเช็คอินเทอร์เน็ต)');
+      };
+      document.head.appendChild(script);
       return;
     }
 
     try {
       state.mqttClient = mqtt.connect(brokerUrl, {
         clientId: clientId,
-        username: CONFIG.mqttUsername,
-        password: CONFIG.mqttPassword,
+        username: username,
+        password: password,
         clean: true,
+        keepalive: 60,
         reconnectPeriod: CONFIG.reconnectDelay,
-        connectTimeout: 10000,
+        connectTimeout: 15000,
+        resubscribe: true,
       });
 
       state.mqttClient.on('connect', () => {

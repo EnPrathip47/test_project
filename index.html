@@ -416,14 +416,24 @@
         </h2>
       </div>
       <div class="settings-panel">
-        <div class="settings-field">
-          <label class="settings-field__label" for="mqttHostDisplay">ที่อยู่ HiveMQ Cloud MQTT Broker (WSS 8884)</label>
-          <input type="text" class="settings-field__input" id="mqttHostDisplay" value="wss://35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud:8884/mqtt" readonly />
+        <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 12px;">
+          <div class="settings-field">
+            <label class="settings-field__label" for="mqttHostInput">ที่อยู่ HiveMQ Broker Host</label>
+            <input type="text" class="settings-field__input" id="mqttHostInput" value="35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud" placeholder="35d4bbdea...s1.eu.hivemq.cloud" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-field__label" for="mqttUsernameInput">HiveMQ Username (Access Management)</label>
+            <input type="text" class="settings-field__input" id="mqttUsernameInput" value="esp32s3_aircontrol" placeholder="ระบุ Username จาก HiveMQ" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-field__label" for="mqttPasswordInput">HiveMQ Password</label>
+            <input type="password" class="settings-field__input" id="mqttPasswordInput" value="project123" placeholder="ระบุ Password จาก HiveMQ" />
+          </div>
         </div>
         <div class="settings-actions">
           <button class="btn btn--connect" id="connectBtn">
             <span class="btn__icon">🔌</span>
-            เชื่อมต่อ MQTT
+            บันทึก & เชื่อมต่อ MQTT
           </button>
           <button class="btn btn--disconnect" id="disconnectBtn" disabled>
             <span class="btn__icon">⛔</span>
@@ -500,8 +510,8 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js"></script>
   <script src="mqtt.min.js"></script>
-  <script>if (typeof mqtt === 'undefined') document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js"><\/script>');</script>
   <script src="app.js"></script>
 </body>
 </html>

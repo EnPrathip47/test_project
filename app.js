@@ -7,15 +7,14 @@
   'use strict';
 
   // ── Configuration ──
+  // [หมายเหตุ]: สามารถแก้ไขค่าที่อยู่ HiveMQ Broker Host, Username และ Password ได้ที่นี่
+  // หรือสามารถปรับแก้สดๆ ผ่านหน้าเว็บเมนู "การตั้งค่าการเชื่อมต่อ" (Settings Panel) ได้เช่นกัน
   const CONFIG = {
-    mqttHost: "35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud",
+    mqttHost: "35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud", // <--- แก้ไขที่อยู่ HiveMQ Broker ได้ที่นี่
     mqttWebSocketPort: 8884,
     mqttPath: "/mqtt",
-    mqttUsername: "esp32s3_aircontrol",
-    mqttPassword: "project123",
-    topicControl: "aircon/control",
-    topicStatus: "aircon/status",
-    topicAvailability: "aircon/availability",
+    mqttUsername: "esp32s3_aircontrol", // <--- แก้ไข Username จาก HiveMQ Access Management ได้ที่นี่
+    mqttPassword: "project123",          // <--- แก้ไข Password จาก HiveMQ Access Management ได้ที่นี่
     reconnectDelay: 3000,
     maxReconnectAttempts: 10,
     demoUpdateInterval: 2000,
@@ -362,13 +361,13 @@
     const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
     if (!start || !stop) return;
 
-    // Browser-side schedule trigger: When reaching start time
-    if (state.systemState === 'ready') {
+    // Browser-side schedule trigger: When reaching start time (Auto start working immediately)
+    if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
         updateSystemState('running');
         sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan);
-        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์ไปยัง ESP32-S3`);
-        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ส่งคำสั่งไปยัง HiveMQ Cloud`);
+        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ระบบเริ่มทำงานอัตโนมัติ (ส่งคำสั่งเปิดแอร์ไปยัง ESP32-S3)`);
+        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ระบบเริ่มทำงานอัตโนมัติ`);
       }
     }
     // When running, reach off time -> timeout
@@ -1330,6 +1329,13 @@
     const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
 
     if (start && stop) {
+      // บังคับการตั้งเวลาปิดให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+      const diffMs = stop.getTime() - start.getTime();
+      if (diffMs < 60 * 1000) {
+        showToast('error', 'การตั้งเวลาปิดแอร์ ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        return;
+      }
+
       if (now < start) {
         state.acOn = false;
         updateSystemState('ready');
@@ -1412,6 +1418,13 @@
     const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
 
     if (start && stop) {
+      // บังคับการตั้งเวลาปิดให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+      const diffMs = stop.getTime() - start.getTime();
+      if (diffMs < 60 * 1000) {
+        showToast('error', 'การตั้งเวลาปิดแอร์ ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        return;
+      }
+
       if (now < start) {
         state.acOn = false;
         updateSystemState('ready');

@@ -1336,22 +1336,12 @@
         return;
       }
 
-      if (now < start) {
-        state.acOn = false;
-        updateSystemState('ready');
-        const isFutureDate = (onIso > todayIso);
-        const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
-        addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
-        showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-      } else if (now >= start && now < stop) {
-        state.acOn = true;
-        updateSystemState('running');
-        sendMqttPayload(1, targetTemp, state.acMode, state.acFan);
-        addLog('success', `${modeLabel} บันทึกเวลาสำเร็จ — ถึงช่วงเวลาทำงานแล้ว (${onTimeVal}) ตั้งค่า ${targetTemp}°C เปิดแอร์`);
-        showToast('success', `${modeLabel} บันทึกเวลาสำเร็จ — เปิดแอร์ ${targetTemp}°C`);
-      } else {
+      // [สำคัญ] บันทึกค่าจะไปสถานะ READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม
+      // ระบบ checkScheduleState (ทำงานทุกวินาที) จะเป็นตัวเปลี่ยนสถานะเป็น RUNNING
+      // โดยอัตโนมัติเมื่อนาฬิกาเดินถึงเวลาเปิดแอร์ที่ตั้งไว้
+      if (now >= stop) {
+        // เวลาปิดผ่านมาแล้ว
         if (isAutoMode) {
-          // Auto mode: time already passed today, prepare for tomorrow
           showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — ระบบจะทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);
           state.acOn = false;
           updateSystemState('ready');
@@ -1360,6 +1350,20 @@
           showToast('warning', `เวลาที่ตั้งไว้ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาใหม่`);
           state.schedule.enabled = false;
           updateSystemState('idle');
+        }
+      } else {
+        // ยังไม่ถึงเวลาปิด → ไป READY เสมอ แล้วรอ checkScheduleState ทำงาน
+        state.acOn = false;
+        updateSystemState('ready');
+        const isFutureDate = (onIso > todayIso);
+        const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
+        if (now < start) {
+          addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
+          showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
+        } else {
+          // อยู่ในช่วงเวลา (now >= start && now < stop) → ไป READY แล้วให้ checkScheduleState จัดการ
+          addLog('success', `${modeLabel} บันทึกเวลาสำเร็จ (${onTimeVal} - ${offTimeVal}) — ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
+          showToast('success', `${modeLabel} บันทึกเวลาสำเร็จ — อุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
         }
       }
     }
@@ -1425,19 +1429,34 @@
         return;
       }
 
-      if (now < start) {
+      // [สำคัญ] กดเริ่มทำงาน → ไป READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม
+      // ระบบ checkScheduleState (ทำงานทุกวินาที) จะเป็นตัวเปลี่ยนสถานะเป็น RUNNING
+      // โดยอัตโนมัติเมื่อนาฬิกาเดินถึงเวลาเปิดแอร์ที่ตั้งไว้
+      if (now >= stop) {
+        // เวลาปิดผ่านมาแล้ว
+        if (isAutoMode) {
+          showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — รอทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);
+          state.acOn = false;
+          updateSystemState('ready');
+        } else {
+          showToast('warning', `เวลาที่ตั้งไว้ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาใหม่`);
+          state.schedule.enabled = false;
+          updateSystemState('idle');
+        }
+      } else {
+        // ยังไม่ถึงเวลาปิด → ไป READY เสมอ แล้วรอ checkScheduleState ทำงาน
         state.acOn = false;
         updateSystemState('ready');
         const isFutureDate = (onIso > todayIso);
         const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
-        addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
-        showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-      } else if (now >= start && now < stop) {
-        state.acOn = true;
-        updateSystemState('running');
-        sendMqttPayload(1, targetTemp, state.acMode, state.acFan);
-        addLog('success', `${modeLabel} เริ่มทำงาน — ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) ตั้งค่า ${targetTemp}°C (ส่งคำสั่งไป ESP32)`);
-        showToast('success', `${modeLabel} เริ่มทำงานแล้ว — เปิดแอร์ ${targetTemp}°C`);
+        if (now < start) {
+          addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
+          showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
+        } else {
+          // อยู่ในช่วงเวลา (now >= start && now < stop) → READY แล้ว checkScheduleState จะเปิดแอร์เอง
+          addLog('info', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
+          showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
+        }
       } else {
         if (isAutoMode) {
           showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — รอทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);

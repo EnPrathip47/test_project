@@ -432,8 +432,19 @@
       validateDateNotPast(DOM.offDate);
       updateScheduleInputsState();
     });
-    DOM.onTime?.addEventListener('input', updateScheduleInputsState);
-    DOM.offTime?.addEventListener('input', updateScheduleInputsState);
+    DOM.onTime?.addEventListener('input', () => {
+      updateScheduleInputsState();
+    });
+    DOM.onTime?.addEventListener('change', () => {
+      validateTimeInterval();
+    });
+
+    DOM.offTime?.addEventListener('input', () => {
+      updateScheduleInputsState();
+    });
+    DOM.offTime?.addEventListener('change', () => {
+      validateTimeInterval();
+    });
 
     DOM.targetTemp?.addEventListener('change', () => {
       state.userModifiedTemp = true;
@@ -539,6 +550,27 @@
     }
     state.targetTemp = rawVal;
     return rawVal;
+  }
+
+  // ตรวจสอบความถูกต้องของเวลาปิด ต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป
+  function validateTimeInterval() {
+    if (state.scheduleMode !== 'manual') return true;
+    const onTimeVal = DOM.onTime?.value;
+    const offTimeVal = DOM.offTime?.value;
+    const onDateVal = DOM.onDate?.value || getTodayIso();
+    const offDateVal = DOM.offDate?.value || onDateVal;
+
+    if (!onTimeVal || !offTimeVal) return true;
+
+    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+    if (start && stop) {
+      const diffMs = stop.getTime() - start.getTime();
+      if (diffMs < 60 * 1000) {
+        showToast('warning', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        return false;
+      }
+    }
+    return true;
   }
 
   function updateScheduleInputsState() {
@@ -1370,7 +1402,7 @@
       // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
-        showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;
       }
@@ -1461,7 +1493,7 @@
       // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
-        showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;
       }

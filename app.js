@@ -1457,16 +1457,6 @@
           addLog('info', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
           showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
         }
-      } else {
-        if (isAutoMode) {
-          showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — รอทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);
-          state.acOn = false;
-          updateSystemState('ready');
-        } else {
-          showToast('warning', `เวลาที่ตั้งไว้ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาใหม่`);
-          state.schedule.enabled = false;
-          updateSystemState('idle');
-        }
       }
     }
   }

@@ -1343,6 +1343,40 @@
       return;
     }
 
+    const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
+    const now = new Date();
+    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+
+    if (!start || !stop) {
+      showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
+      return;
+    }
+
+    if (!isAutoMode) {
+      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
+      if (start.getTime() < now.getTime() - 10000) {
+        showToast('error', `ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        state.schedule.enabled = false;
+        return;
+      }
+
+      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
+      if (stop.getTime() <= now.getTime()) {
+        showToast('error', `ห้ามตั้งเวลาปิดแอร์ย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        state.schedule.enabled = false;
+        return;
+      }
+
+      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+      const diffMs = stop.getTime() - start.getTime();
+      if (diffMs < 60 * 1000) {
+        showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        state.schedule.enabled = false;
+        return;
+      }
+    }
+
+    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
     state.schedule.onDate = onDateVal;
     state.schedule.onTime = onTimeVal;
     state.schedule.offDate = offDateVal;
@@ -1351,57 +1385,13 @@
 
     saveSettings();
 
-    const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
-    const now = new Date();
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
-
-    if (start && stop) {
-      if (!isAutoMode) {
-        // 1. ห้ามตั้งเวลาเปิดย้อนหลัง (ต้องไม่ย้อนหลังเกิน 10 วินาที)
-        if (start.getTime() < now.getTime() - 10000) {
-          showToast('error', 'ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง กรุณากำหนดเวลาในอนาคต');
-          return;
-        }
-
-        // 2. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-        const diffMs = stop.getTime() - start.getTime();
-        if (diffMs < 60 * 1000) {
-          showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-          return;
-        }
-      }
-
-      // [สำคัญ] บันทึกค่าจะไปสถานะ READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม
-      // ระบบ checkScheduleState (ทำงานทุกวินาที) จะเป็นตัวเปลี่ยนสถานะเป็น RUNNING
-      // โดยอัตโนมัติเมื่อนาฬิกาเดินถึงเวลาเปิดแอร์ที่ตั้งไว้
-      if (now >= stop) {
-        // เวลาปิดผ่านมาแล้ว
-        if (isAutoMode) {
-          showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — ระบบจะทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);
-          state.acOn = false;
-          updateSystemState('ready');
-          addLog('info', `${modeLabel} เลยเวลา 17:00 แล้ว — ตั้งรอวันถัดไป 08:00-17:00`);
-        } else {
-          showToast('warning', `เวลาที่ตั้งไว้ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาใหม่`);
-          state.schedule.enabled = false;
-          updateSystemState('idle');
-        }
-      } else {
-        // ยังไม่ถึงเวลาปิด → ไป READY เสมอ แล้วรอ checkScheduleState ทำงาน
-        state.acOn = false;
-        updateSystemState('ready');
-        const isFutureDate = (onIso > todayIso);
-        const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
-        if (now < start) {
-          addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
-          showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-        } else {
-          // อยู่ในช่วงเวลา (now >= start && now < stop) → ไป READY แล้วให้ checkScheduleState จัดการ
-          addLog('success', `${modeLabel} บันทึกเวลาสำเร็จ (${onTimeVal} - ${offTimeVal}) — ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
-          showToast('success', `${modeLabel} บันทึกเวลาสำเร็จ — อุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
-        }
-      }
-    }
+    // บันทึกค่าสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
+    state.acOn = false;
+    updateSystemState('ready');
+    const isFutureDate = (onIso > todayIso);
+    const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
+    addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
+    showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
   }
 
   function startAC() {
@@ -1444,6 +1434,40 @@
       return;
     }
 
+    const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
+    const now = new Date();
+    const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
+
+    if (!start || !stop) {
+      showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
+      return;
+    }
+
+    if (!isAutoMode) {
+      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
+      if (start.getTime() < now.getTime() - 10000) {
+        showToast('error', `ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        state.schedule.enabled = false;
+        return;
+      }
+
+      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
+      if (stop.getTime() <= now.getTime()) {
+        showToast('error', `ห้ามตั้งเวลาปิดแอร์ย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        state.schedule.enabled = false;
+        return;
+      }
+
+      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+      const diffMs = stop.getTime() - start.getTime();
+      if (diffMs < 60 * 1000) {
+        showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        state.schedule.enabled = false;
+        return;
+      }
+    }
+
+    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
     state.schedule.onDate  = finalOnDate;
     state.schedule.onTime  = onTimeVal;
     state.schedule.offDate = finalOffDate;
@@ -1452,55 +1476,17 @@
 
     saveSettings();
 
-    const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
-    const now = new Date();
-    const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
-
-    if (start && stop) {
-      if (!isAutoMode) {
-        // 1. ห้ามตั้งเวลาเปิดย้อนหลัง (ต้องไม่ย้อนหลังเกิน 10 วินาที)
-        if (start.getTime() < now.getTime() - 10000) {
-          showToast('error', 'ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง กรุณากำหนดเวลาในอนาคต');
-          return;
-        }
-
-        // 2. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-        const diffMs = stop.getTime() - start.getTime();
-        if (diffMs < 60 * 1000) {
-          showToast('error', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-          return;
-        }
-      }
-
-      // [สำคัญ] กดเริ่มทำงาน → ไป READY เสมอ ไม่ว่าเวลาปัจจุบันจะเป็นอะไรก็ตาม
-      // ระบบ checkScheduleState (ทำงานทุกวินาที) จะเป็นตัวเปลี่ยนสถานะเป็น RUNNING
-      // โดยอัตโนมัติเมื่อนาฬิกาเดินถึงเวลาเปิดแอร์ที่ตั้งไว้
-      if (now >= stop) {
-        // เวลาปิดผ่านมาแล้ว
-        if (isAutoMode) {
-          showToast('info', `${modeLabel} เวลา 17:00 ผ่านมาแล้ววันนี้ — รอทำงานอัตโนมัติ 08:00-17:00 พรุ่งนี้`);
-          state.acOn = false;
-          updateSystemState('ready');
-        } else {
-          showToast('warning', `เวลาที่ตั้งไว้ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาใหม่`);
-          state.schedule.enabled = false;
-          updateSystemState('idle');
-        }
-      } else {
-        // ยังไม่ถึงเวลาปิด → ไป READY เสมอ แล้วรอ checkScheduleState ทำงาน
-        state.acOn = false;
-        updateSystemState('ready');
-        const isFutureDate = (onIso > todayIso);
-        const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
-        if (now < start) {
-          addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
-          showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-        } else {
-          // อยู่ในช่วงเวลา (now >= start && now < stop) → READY แล้ว checkScheduleState จะเปิดแอร์เอง
-          addLog('info', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
-          showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
-        }
-      }
+    // กดเริ่มทำงานสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
+    state.acOn = false;
+    updateSystemState('ready');
+    const isFutureDate = (onIso > todayIso);
+    const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
+    if (now < start) {
+      addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
+      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
+    } else {
+      addLog('info', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
+      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
     }
   }
 

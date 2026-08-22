@@ -15,10 +15,14 @@
     mqttPath: "/mqtt",
     mqttUsername: "esp32s3_aircontrol", // <--- แก้ไข Username จาก HiveMQ Access Management ได้ที่นี่
     mqttPassword: "project123",          // <--- แก้ไข Password จาก HiveMQ Access Management ได้ที่นี่
+    topicControl: "aircon/control",       // หัวข้อ MQTT รับคำสั่งจากเว็บ → ESP32
+    topicStatus: "aircon/status",         // หัวข้อ MQTT รับสถานะจาก ESP32 → เว็บ
+    topicAvailability: "aircon/availability", // หัวข้อ MQTT Heartbeat Online/Offline
     reconnectDelay: 3000,
     maxReconnectAttempts: 10,
     demoUpdateInterval: 2000,
   };
+
 
   // ── State ──
   const state = {

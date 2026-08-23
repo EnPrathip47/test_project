@@ -726,7 +726,7 @@
     if (DOM.onTime) DOM.onTime.disabled = isAuto;
     if (DOM.offTime) DOM.offTime.disabled = isAuto;
 
-    // In auto mode, set fixed values and enable READY state (Green Blinking)
+    // In auto mode, set fixed values and enable READY (Green Blinking) or RUNNING (Green Solid)
     if (isAuto) {
       if (DOM.onTime) DOM.onTime.value = '08:00';
       if (DOM.offTime) DOM.offTime.value = '17:00';
@@ -744,8 +744,16 @@
       const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
       if (start && stop && now >= start && now < stop) {
         updateSystemState('running');
+        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan);
       } else {
         updateSystemState('ready');
+      }
+    } else {
+      // In manual mode, reset schedule and instantly set light to IDLE (Yellow Light)
+      state.schedule.enabled = false;
+      state.acOn = false;
+      if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+        updateSystemState('idle');
       }
     }
 

@@ -237,7 +237,8 @@
     mqttStatus: document.getElementById('mqttStatus'),
     modbusStatus: document.getElementById('modbusStatus'),
 
-    // Auto/Manual Mode Toggle
+    // None/Auto/Manual Mode Toggle
+    modeNoneBtn: document.getElementById('modeNoneBtn'),
     modeAutoBtn: document.getElementById('modeAutoBtn'),
     modeManualBtn: document.getElementById('modeManualBtn'),
     modeToggleBar: document.getElementById('modeToggleBar'),
@@ -514,7 +515,8 @@
 
     DOM.btnSendMqtt?.addEventListener('click', sendMqttCommandFromUI);
 
-    // Auto/Manual Mode Toggle
+    // None/Auto/Manual Mode Toggle
+    DOM.modeNoneBtn?.addEventListener('click', () => setScheduleMode('none'));
     DOM.modeAutoBtn?.addEventListener('click', () => setScheduleMode('auto'));
     DOM.modeManualBtn?.addEventListener('click', () => setScheduleMode('manual'));
   }
@@ -642,7 +644,7 @@
           }
         }
         // Load schedule mode preference
-        if (settings.scheduleMode === 'auto' || settings.scheduleMode === 'manual') {
+        if (settings.scheduleMode === 'none' || settings.scheduleMode === 'auto' || settings.scheduleMode === 'manual') {
           state.scheduleMode = settings.scheduleMode;
         }
       } catch (e) {
@@ -683,7 +685,10 @@
     applyScheduleMode(mode);
     saveSettings();
 
-    if (mode === 'auto') {
+    if (mode === 'none') {
+      showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา สั่งงานตรงได้อิสระ)');
+    } else if (mode === 'auto') {
       showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 ทุกวัน');
       addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (08:00-17:00 ทุกวัน)');
     } else {
@@ -693,34 +698,53 @@
   }
 
   function applyScheduleMode(mode) {
+    const isNone = (mode === 'none');
     const isAuto = (mode === 'auto');
+    const isManual = (mode === 'manual');
     const toggle = DOM.modeToggleBar?.querySelector('.mode-toggle');
 
     // Toggle button active states
+    if (DOM.modeNoneBtn) {
+      DOM.modeNoneBtn.classList.toggle('mode-toggle__btn--active', isNone);
+    }
     if (DOM.modeAutoBtn) {
       DOM.modeAutoBtn.classList.toggle('mode-toggle__btn--active', isAuto);
     }
     if (DOM.modeManualBtn) {
-      DOM.modeManualBtn.classList.toggle('mode-toggle__btn--active', !isAuto);
+      DOM.modeManualBtn.classList.toggle('mode-toggle__btn--active', isManual);
     }
 
     // Slider animation
     if (toggle) {
-      toggle.classList.toggle('mode-toggle--manual', !isAuto);
+      toggle.classList.remove('mode-toggle--auto', 'mode-toggle--manual');
+      if (isAuto) toggle.classList.add('mode-toggle--auto');
+      if (isManual) toggle.classList.add('mode-toggle--manual');
     }
 
-    // Mode info badge
+    // Mode info badge & description
     if (DOM.modeInfoBadge) {
-      DOM.modeInfoBadge.textContent = isAuto ? '🔄 AUTO MODE' : '🛠️ MANUAL MODE';
-      DOM.modeInfoBadge.className = 'mode-info__badge ' + (isAuto ? 'mode-info__badge--auto' : 'mode-info__badge--manual');
+      if (isNone) {
+        DOM.modeInfoBadge.textContent = '⚡ NONE MODE';
+        DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--none';
+      } else if (isAuto) {
+        DOM.modeInfoBadge.textContent = '🔄 AUTO MODE';
+        DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--auto';
+      } else {
+        DOM.modeInfoBadge.textContent = '🛠️ MANUAL MODE';
+        DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--manual';
+      }
     }
     if (DOM.modeInfoDesc) {
-      DOM.modeInfoDesc.textContent = isAuto
-        ? 'ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ'
-        : 'ปรับวันที่ เวลา และอุณหภูมิได้อิสระ';
+      if (isNone) {
+        DOM.modeInfoDesc.textContent = 'ไม่ตั้งเวลา | สั่งงานแอร์ ปรับอุณหภูมิ เปิด-ปิด ตรงได้อิสระ';
+      } else if (isAuto) {
+        DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ';
+      } else {
+        DOM.modeInfoDesc.textContent = 'ปรับวันที่ เวลา และอุณหภูมิได้อิสระ';
+      }
     }
 
-    // Lock overlays
+    // Lock overlays: only show in AUTO mode
     if (DOM.onGroupLock) {
       DOM.onGroupLock.classList.toggle('schedule-group__lock--hidden', !isAuto);
     }
@@ -728,14 +752,19 @@
       DOM.offGroupLock.classList.toggle('schedule-group__lock--hidden', !isAuto);
     }
 
-    // Disable/enable date & time inputs in auto mode
-    if (DOM.onDate) DOM.onDate.disabled = isAuto;
-    if (DOM.offDate) DOM.offDate.disabled = isAuto;
-    if (DOM.onTime) DOM.onTime.disabled = isAuto;
-    if (DOM.offTime) DOM.offTime.disabled = isAuto;
-
-    // In auto mode, set fixed values and enable READY (Green Blinking) or RUNNING (Green Solid)
-    if (isAuto) {
+    // Disable/enable date & time inputs
+    if (isNone) {
+      state.schedule.enabled = false;
+      if (DOM.onDate) DOM.onDate.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
+      if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offTime) DOM.offTime.disabled = true;
+      if (DOM.onTime) DOM.onTime.value = '';
+      if (DOM.offTime) DOM.offTime.value = '';
+      if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
+        updateSystemState('idle');
+      }
+    } else if (isAuto) {
       if (DOM.onTime) DOM.onTime.value = '08:00';
       if (DOM.offTime) DOM.offTime.value = '17:00';
       const todayIso = getTodayIso();
@@ -757,10 +786,14 @@
         updateSystemState('ready');
       }
     } else {
-      // In manual mode, reset schedule and instantly set light to IDLE (Yellow Light)
+      // In manual mode, reset schedule and set light to IDLE
+      if (DOM.onDate) DOM.onDate.disabled = false;
+      if (DOM.offDate) DOM.offDate.disabled = false;
+      if (DOM.onTime) DOM.onTime.disabled = false;
+      if (DOM.offTime) DOM.offTime.disabled = false;
       state.schedule.enabled = false;
       state.acOn = false;
-      if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+      if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
         updateSystemState('idle');
       }
     }
@@ -1076,8 +1109,8 @@
           updateSystemState('running');
         }
       } else if (yellowCoil === 1) {
-        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น idle ถ้าอยู่ในสถานะ ready, timeout หรือ stopped
-        if (state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
+        // [แก้ไขบั๊ค]: โหมด AUTO ห้ามเด้งกลับไปสีเหลือง (idle) ให้คงอยู่สถานะ ready หรือ running
+        if (state.scheduleMode !== 'auto' && state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
           updateSystemState('idle');
         }
       }
@@ -1088,7 +1121,7 @@
           updateSystemState('running');
         }
       } else if (mqttData.machine_state === 'stopped' && state.systemState === 'running') {
-        if (state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
+        if (state.scheduleMode !== 'auto' && state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
           updateSystemState('idle');
         }
       }
@@ -1322,8 +1355,9 @@
   }
 
   function updateControlButtons() {
+    const isNone = (state.scheduleMode === 'none');
     const isAuto = (state.scheduleMode === 'auto');
-    const hasConfiguredSchedule = isAuto || isScheduleSet();
+    const hasConfiguredSchedule = isNone || isAuto || isScheduleSet();
 
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       if (DOM.btnSave) {
@@ -1350,6 +1384,7 @@
       if (DOM.modeSelect) DOM.modeSelect.disabled = true;
       if (DOM.fanSelect) DOM.fanSelect.disabled = true;
       if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = true;
       if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
       if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
       return;
@@ -1364,37 +1399,36 @@
     if (DOM.modeSelect) DOM.modeSelect.disabled = false;
     if (DOM.fanSelect) DOM.fanSelect.disabled = false;
     if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
+    if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
     if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
     if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
 
-    // ปุ่มบันทึกค่า: ในโหมด AUTO จะปิดการใช้งาน (ไม่จำเป็นต้องกด เพราะเวลาฟิกซ์ 08:00-17:00 ไว้แล้ว)
+    // ปุ่มบันทึกค่า: ในโหมด NONE และ AUTO จะปิดการใช้งาน
     if (DOM.btnSave) {
-      DOM.btnSave.disabled = isAuto;
+      DOM.btnSave.disabled = (isNone || isAuto);
       if (DOM.btnSaveHint) {
-        DOM.btnSaveHint.textContent = isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '';
+        DOM.btnSaveHint.textContent = isNone ? 'โหมด NONE สั่งงานตรงได้ทันที' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '');
       }
-      DOM.btnSave.title = isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา';
+      DOM.btnSave.title = isNone ? 'โหมด NONE ไม่จำเป็นต้องกดบันทึกเวลา' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา');
     }
 
     // ปุ่มเริ่มทำงาน:
-    // - ในโหมด AUTO: กดเริ่มทำงานได้ทันที (เมื่อไม่ได้ running)
-    // - ในโหมด MANUAL: ต้องกดบันทึกค่าก่อน
-    const canStart = isAuto
+    // - ในโหมด NONE และ AUTO: กดเริ่มทำงานได้ทันที (เมื่อไม่ได้ running)
+    const canStart = (isNone || isAuto)
       ? (state.systemState !== 'running')
       : (hasConfiguredSchedule && state.systemState !== 'running');
 
     if (DOM.btnStart) {
       DOM.btnStart.disabled = !canStart;
       if (DOM.btnStartHint) {
-        if (isAuto) {
+        if (isNone) {
+          DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงานสั่งตรง';
+        } else if (isAuto) {
           DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงาน';
         } else {
           DOM.btnStartHint.textContent = hasConfiguredSchedule ? 'พร้อมเริ่มทำงาน' : 'ต้องกดบันทึกค่าก่อน';
         }
       }
-      DOM.btnStart.title = isAuto
-        ? 'เริ่มการทำงานในโหมด AUTO (08:00 - 17:00)'
-        : (hasConfiguredSchedule ? 'เริ่มการทำงาน' : 'กรุณากดบันทึกเวลาก่อนกดเริ่มทำงาน');
     }
 
     // ปุ่มหยุดทำงาน: ใช้งานได้เมื่อระบบกำลัง running

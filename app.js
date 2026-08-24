@@ -534,12 +534,20 @@
   }
 
   function adjustTempStep(delta) {
+    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
+      return;
+    }
     const current = parseFloat(DOM.targetTemp?.value) || 25;
     const nextVal = Math.min(27, Math.max(18, current + delta));
     setTargetTemp(nextVal, true);
   }
 
   function setTargetTemp(val, isUserAction = false) {
+    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
+      return;
+    }
     const validVal = Math.min(27, Math.max(18, val));
     if (DOM.targetTemp) DOM.targetTemp.value = validVal;
     state.targetTemp = validVal;
@@ -937,13 +945,19 @@
     }
     if (DOM.mqttErrorMsg) DOM.mqttErrorMsg.textContent = '';
 
+    const now = new Date();
     const payloadObj = {
       power: p,
       temperature: t,
       mode: m,
       fan: f,
       complete: c,
-      reset: r
+      reset: r,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      day: now.getDate(),
+      hour: now.getHours(),
+      minute: now.getMinutes()
     };
     const payloadStr = JSON.stringify(payloadObj);
 
@@ -1322,8 +1336,36 @@
       }
       if (DOM.btnStop) DOM.btnStop.disabled = true;
       if (DOM.btnReset) DOM.btnReset.disabled = false;
+
+      // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
+      if (DOM.onDate) DOM.onDate.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
+      if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offTime) DOM.offTime.disabled = true;
+      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
+      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
+      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
+      if (DOM.powerBtnOn) DOM.powerBtnOn.disabled = true;
+      if (DOM.powerBtnOff) DOM.powerBtnOff.disabled = true;
+      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
+      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
+      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
+      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
       return;
     }
+
+    // Re-enable interactive elements when not in TIMEOUT / STOPPED
+    if (DOM.targetTemp) DOM.targetTemp.disabled = false;
+    if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
+    if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
+    if (DOM.powerBtnOn) DOM.powerBtnOn.disabled = false;
+    if (DOM.powerBtnOff) DOM.powerBtnOff.disabled = false;
+    if (DOM.modeSelect) DOM.modeSelect.disabled = false;
+    if (DOM.fanSelect) DOM.fanSelect.disabled = false;
+    if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
+    if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
+    if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
 
     // ปุ่มบันทึกค่า: ในโหมด AUTO จะปิดการใช้งาน (ไม่จำเป็นต้องกด เพราะเวลาฟิกซ์ 08:00-17:00 ไว้แล้ว)
     if (DOM.btnSave) {
@@ -1367,6 +1409,10 @@
   }
 
   function setMqttPower(val, isUserAction = false) {
+    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
+      return;
+    }
     state.acPower = val;
     if (isUserAction) {
       state.userModifiedPower = true;

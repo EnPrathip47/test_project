@@ -1675,18 +1675,21 @@
     if (DOM.onDate) DOM.onDate.value = '';
     if (DOM.offDate) DOM.offDate.value = '';
 
-    // ปลดล็อกสถานะระบบกลับสู่ idle เพื่อให้สลับโหมด AUTO/MANUAL ได้ทันที
+    // เมื่อกดรีเซท ให้สลับเด้งกลับสู่โหมด NONE MODE ทันที (ทั้งจาก AUTO และ MANUAL)
+    state.scheduleMode = 'none';
+
+    // ปลดล็อกสถานะระบบกลับสู่ idle
     state.systemState = 'idle';
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
     saveSettings();
 
-    // Re-apply schedule mode (restore mode controls and inputs)
-    applyScheduleMode(state.scheduleMode);
+    // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
+    applyScheduleMode('none');
 
-    addLog('info', 'รีเซทระบบเรียบร้อย — สามารถสลับโหมด AUTO/MANUAL หรือกดเริ่มทำงานได้ทันที');
-    showToast('success', 'รีเซทระบบเรียบร้อย (สามารถเปลี่ยนโหมดได้แล้ว)');
+    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (สั่งงานตรงได้ทันที)');
+    showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
   }
 
   // ============================================================

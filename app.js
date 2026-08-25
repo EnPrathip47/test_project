@@ -961,7 +961,6 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
   function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0) {
     // Number type validation
     const p = Number(power);

@@ -961,7 +961,8 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0) {
+  // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0) {
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
@@ -969,6 +970,7 @@
     const f = Number(fan);
     const c = Number(complete) || 0;
     const r = Number(reset) || 0;
+    const ms = Number(mqttSend) || 0;
 
     const validationErrors = validatePayloadValues(p, t, m, f);
     if (validationErrors.length > 0) {
@@ -979,6 +981,22 @@
     if (DOM.mqttErrorMsg) DOM.mqttErrorMsg.textContent = '';
 
     const now = new Date();
+
+    // Calculate Start Date (D500-D504) and Stop Date (D600-D604)
+    let startDt = now;
+    let stopDt = null;
+
+    const onTimeVal  = state.schedule.onTime  || DOM.onTime?.value;
+    const offTimeVal = state.schedule.offTime || DOM.offTime?.value;
+    const onDateVal  = state.schedule.onDate  || DOM.onDate?.value;
+    const offDateVal = state.schedule.offDate || DOM.offDate?.value;
+
+    if (onTimeVal && offTimeVal) {
+      const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+      if (start) startDt = start;
+      if (stop) stopDt = stop;
+    }
+
     const payloadObj = {
       power: p,
       temperature: t,
@@ -986,11 +1004,28 @@
       fan: f,
       complete: c,
       reset: r,
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-      day: now.getDate(),
-      hour: now.getHours(),
-      minute: now.getMinutes()
+      mqtt_send: ms,
+
+      // D500 - D504: Start DateTime
+      start_year: startDt.getFullYear(),
+      start_month: startDt.getMonth() + 1,
+      start_day: startDt.getDate(),
+      start_hour: startDt.getHours(),
+      start_minute: startDt.getMinutes(),
+
+      // Legacy fallback
+      year: startDt.getFullYear(),
+      month: startDt.getMonth() + 1,
+      day: startDt.getDate(),
+      hour: startDt.getHours(),
+      minute: startDt.getMinutes(),
+
+      // D600 - D604: Stop DateTime
+      stop_year: stopDt ? stopDt.getFullYear() : 0,
+      stop_month: stopDt ? stopDt.getMonth() + 1 : 0,
+      stop_day: stopDt ? stopDt.getDate() : 0,
+      stop_hour: stopDt ? stopDt.getHours() : 0,
+      stop_minute: stopDt ? stopDt.getMinutes() : 0
     };
     const payloadStr = JSON.stringify(payloadObj);
 
@@ -1040,7 +1075,7 @@
     const mode = state.acMode;
     const fan = state.acFan;
 
-    sendMqttPayload(power, temp, mode, fan);
+    sendMqttPayload(power, temp, mode, fan, 0, 0, 1); // mqttSend = 1 (Triggers M8 on PLC)
   }
 
   // Handle incoming status payload from ESP32 (Actual State Readback)
@@ -1545,9 +1580,10 @@
     state.schedule.onTime = onTimeVal;
     state.schedule.offDate = offDateVal;
     state.schedule.offTime = offTimeVal;
-    state.schedule.enabled = true;
-
     saveSettings();
+
+    // ส่งค่ากำหนดเวลา Start (D500-D504) และ Stop (D600-D604) ไปยัง ESP32 & PLC
+    sendMqttPayload(0, targetTemp, state.acMode, state.acFan);
 
     // บันทึกค่าสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
     state.acOn = false;
@@ -1656,7 +1692,7 @@
 
   function stopAC() {
     state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan);
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0); // complete = 0 (Normal Stop: M6 ON, M500 OFF)
     updateSystemState('stopped');
     addLog('warning', 'กดหยุดการทำงาน — ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3 (ไฟแดงติดค้าง)');
     showToast('warning', 'หยุดทำงานแล้ว — ไฟแดงติดค้าง (ต้องกดรีเซท)');

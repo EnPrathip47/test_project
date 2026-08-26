@@ -969,7 +969,13 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0) {
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true) {
+    // If in AUTO mode and not Reset: DO NOT send Modbus commands to PLC!
+    if (state.scheduleMode === 'auto' && reset !== 1) {
+      console.log('⚙️ [AUTO MODE] Modbus write bypassed in Web App');
+      return false;
+    }
+
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
@@ -980,8 +986,8 @@
     const ms = Number(mqttSend) || 0;
     const sb = Number(stopBtn) || 0;
     const tb = Number(startBtn) || 0;
-    const ma = Number(modeAuto) || 0;
-    const mm = Number(modeManual) || 0;
+    const ma = (state.scheduleMode === 'auto' || modeAuto) ? 1 : 0;
+    const mm = (state.scheduleMode === 'manual' || modeManual) ? 1 : 0;
 
     const validationErrors = validatePayloadValues(p, t, m, f);
     if (validationErrors.length > 0) {
@@ -1008,6 +1014,9 @@
       if (stop) stopDt = stop;
     }
 
+    // In Auto mode OR when includeStopDate is false: DO NOT send Stop Date (D500-D504)!
+    const sendStopDate = includeStopDate && (state.scheduleMode !== 'auto');
+
     const payloadObj = {
       power: p,
       temperature: t,
@@ -1020,6 +1029,7 @@
       start_btn: tb,
       mode_auto: ma,
       mode_manual: mm,
+      schedule_mode: state.scheduleMode,
 
       // D500 - D504: Start DateTime
       start_year: startDt.getFullYear(),

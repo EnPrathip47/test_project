@@ -685,17 +685,20 @@
     applyScheduleMode(mode);
     saveSettings();
 
-    // Send mode flag to PLC via MQTT: Auto = M101, Manual = M100
-    const modeAutoFlag = (mode === 'auto') ? 1 : 0;
+    // ในโหมด AUTO: ไม่ต้องส่งค่า Modbus ไปยัง PLC
+    if (mode === 'auto') {
+      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 (ไม่ต้องส่งค่า Modbus)');
+      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (ไม่ต้องส่งค่า Modbus ไป PLC)');
+      return;
+    }
+
+    // ในโหมด MANUAL: ส่ง flag mode_manual
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
-    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag);
+    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, 0, modeManualFlag);
 
     if (mode === 'none') {
       showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
       addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา สั่งงานตรงได้อิสระ)');
-    } else if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 ทุกวัน (M101=ON)');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (M101=ON, 08:00-17:00 ทุกวัน)');
     } else {
       showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ปรับวันเวลาได้อิสระ (M100=ON)');
       addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (M100=ON, ปรับวันเวลาได้)');
@@ -1595,8 +1598,10 @@
     state.schedule.offTime = offTimeVal;
     saveSettings();
 
-    // ส่งค่ากำหนดเวลา Start (D500-D504) และ Stop (D600-D604) ไปยัง ESP32 & PLC
-    sendMqttPayload(0, targetTemp, state.acMode, state.acFan);
+    // ในโหมด AUTO: ไม่ต้องส่งค่า Modbus ไปยัง PLC
+    if (!isAutoMode) {
+      sendMqttPayload(0, targetTemp, state.acMode, state.acFan);
+    }
 
     // บันทึกค่าสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
     state.acOn = false;

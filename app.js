@@ -404,9 +404,9 @@
     if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
         updateSystemState('running');
-        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan);
-        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ระบบเริ่มทำงานอัตโนมัติ (ส่งคำสั่งเปิดแอร์ไปยัง ESP32-S3)`);
-        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ระบบเริ่มทำงานอัตโนมัติ`);
+        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
+        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14 ไปยัง PLC`);
+        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ส่งคำสั่ง M5=ON และ Modbus D10-D14 เปิดแอร์สำเร็จ`);
       }
     }
     // When running, reach off time -> timeout (Complete schedule)

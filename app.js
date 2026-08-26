@@ -685,23 +685,15 @@
     applyScheduleMode(mode);
     saveSettings();
 
-    // ในโหมด AUTO: ไม่ต้องส่งค่า Modbus ไปยัง PLC
-    if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 (ไม่ต้องส่งค่า Modbus)');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (ไม่ต้องส่งค่า Modbus ไป PLC)');
-      return;
-    }
-
-    // ในโหมด MANUAL: ส่ง flag mode_manual
-    const modeManualFlag = (mode === 'manual') ? 1 : 0;
-    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, 0, modeManualFlag);
-
     if (mode === 'none') {
       showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
       addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา สั่งงานตรงได้อิสระ)');
-    } else {
-      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ปรับวันเวลาได้อิสระ (M100=ON)');
-      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (M100=ON, ปรับวันเวลาได้)');
+    } else if (mode === 'auto') {
+      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 (ไม่ต้องส่งค่า Modbus)');
+      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (ไม่ต้องส่งค่า Modbus ไป PLC)');
+    } else if (mode === 'manual') {
+      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — กำหนดเวลาแล้วกด "บันทึกค่า" เพื่อส่ง Modbus');
+      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (ยังไม่ส่ง Modbus จนกว่าจะกดบันทึกค่า หรือ ส่งข้อมูล MQTT)');
     }
   }
 
@@ -969,7 +961,7 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true) {
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true, saveBtn = 0) {
     // If in AUTO mode and not Reset: DO NOT send Modbus commands to PLC!
     if (state.scheduleMode === 'auto' && reset !== 1) {
       console.log('⚙️ [AUTO MODE] Modbus write bypassed in Web App');
@@ -984,6 +976,7 @@
     const c = Number(complete) || 0;
     const r = Number(reset) || 0;
     const ms = Number(mqttSend) || 0;
+    const sv = Number(saveBtn) || 0;
     const sb = Number(stopBtn) || 0;
     const tb = Number(startBtn) || 0;
     const ma = (state.scheduleMode === 'auto' || modeAuto) ? 1 : 0;
@@ -1025,6 +1018,7 @@
       complete: c,
       reset: r,
       mqtt_send: ms,
+      save_btn: sv,
       stop_btn: sb,
       start_btn: tb,
       mode_auto: ma,
@@ -1608,9 +1602,9 @@
     state.schedule.offTime = offTimeVal;
     saveSettings();
 
-    // ในโหมด AUTO: ไม่ต้องส่งค่า Modbus ไปยัง PLC
+    // ในโหมด MANUAL: ส่งค่า Modbus (D500-D504 + M100=ON + M42=ON) เมื่อกดปุ่มบันทึกค่า
     if (!isAutoMode) {
-      sendMqttPayload(0, targetTemp, state.acMode, state.acFan);
+      sendMqttPayload(0, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, 0, 1, true, 1);
     }
 
     // บันทึกค่าสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ

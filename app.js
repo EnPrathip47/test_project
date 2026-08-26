@@ -685,15 +685,20 @@
     applyScheduleMode(mode);
     saveSettings();
 
+    // Send mode flag to PLC via MQTT: Auto = M101, Manual = M100
+    const modeAutoFlag = (mode === 'auto') ? 1 : 0;
+    const modeManualFlag = (mode === 'manual') ? 1 : 0;
+    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag);
+
     if (mode === 'none') {
       showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
       addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา สั่งงานตรงได้อิสระ)');
     } else if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 ทุกวัน');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (08:00-17:00 ทุกวัน)');
+      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 ทุกวัน (M101=ON)');
+      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (M101=ON, 08:00-17:00 ทุกวัน)');
     } else {
-      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ปรับวันเวลาได้อิสระ');
-      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (ปรับวันเวลาได้)');
+      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ปรับวันเวลาได้อิสระ (M100=ON)');
+      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (M100=ON, ปรับวันเวลาได้)');
     }
   }
 
@@ -961,7 +966,7 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0) {
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0) {
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
@@ -970,6 +975,10 @@
     const c = Number(complete) || 0;
     const r = Number(reset) || 0;
     const ms = Number(mqttSend) || 0;
+    const sb = Number(stopBtn) || 0;
+    const tb = Number(startBtn) || 0;
+    const ma = Number(modeAuto) || 0;
+    const mm = Number(modeManual) || 0;
 
     const validationErrors = validatePayloadValues(p, t, m, f);
     if (validationErrors.length > 0) {
@@ -1004,6 +1013,10 @@
       complete: c,
       reset: r,
       mqtt_send: ms,
+      stop_btn: sb,
+      start_btn: tb,
+      mode_auto: ma,
+      mode_manual: mm,
 
       // D500 - D504: Start DateTime
       start_year: startDt.getFullYear(),
@@ -1074,7 +1087,8 @@
     const mode = state.acMode;
     const fan = state.acFan;
 
-    sendMqttPayload(power, temp, mode, fan, 0, 0, 1); // mqttSend = 1 (Triggers M8 on PLC)
+    // Send mqtt_send = 1 (Triggers M8 on PLC, stop_btn = 0)
+    sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
   }
 
   // Handle incoming status payload from ESP32 (Actual State Readback)
@@ -1691,7 +1705,7 @@
 
   function stopAC() {
     state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0); // complete = 0 (Normal Stop: M6 ON, M500 OFF)
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON)
     updateSystemState('stopped');
     addLog('warning', 'กดหยุดการทำงาน — ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3 (ไฟแดงติดค้าง)');
     showToast('warning', 'หยุดทำงานแล้ว — ไฟแดงติดค้าง (ต้องกดรีเซท)');

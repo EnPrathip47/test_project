@@ -1425,6 +1425,12 @@
     updateControlButtons();
   }
 
+  function isScheduleSet() {
+    const onT = state.schedule.onTime || DOM.onTime?.value;
+    const offT = state.schedule.offTime || DOM.offTime?.value;
+    return Boolean(onT && offT && (state.schedule.enabled || (state.schedule.onDate && state.schedule.offDate)));
+  }
+
   function updateControlButtons() {
     const isNone = (state.scheduleMode === 'none');
     const isAuto = (state.scheduleMode === 'auto');
@@ -1616,6 +1622,7 @@
     state.schedule.onTime = onTimeVal;
     state.schedule.offDate = offDateVal;
     state.schedule.offTime = offTimeVal;
+    state.schedule.enabled = true;
     saveSettings();
 
     // ในโหมด MANUAL: ส่งค่า Modbus (D500-D504 + M100=ON + M42=ON) เมื่อกดปุ่มบันทึกค่า
@@ -1712,19 +1719,21 @@
     state.schedule.offTime = offTimeVal;
     state.schedule.enabled = true;
 
-    saveSettings();
-
-    // กดเริ่มทำงานสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
-    state.acOn = false;
-    updateSystemState('ready');
     const isFutureDate = (onIso > todayIso);
     const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
-    if (now < start) {
+
+    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14
+    if (now >= start) {
+      state.acOn = true;
+      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
+      updateSystemState('running');
+      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON สำเร็จ`);
+      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ส่ง M5=ON ไปยัง PLC)`);
+    } else {
+      state.acOn = false;
+      updateSystemState('ready');
       addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
       showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-    } else {
-      addLog('info', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) ระบบ READY รอ checkScheduleState สั่งเปิดแอร์`);
-      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ไฟเขียวกระพริบ)`);
     }
   }
 

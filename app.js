@@ -685,15 +685,21 @@
     applyScheduleMode(mode);
     saveSettings();
 
+    const modeAutoFlag   = (mode === 'auto')   ? 1 : 0;
+    const modeManualFlag = (mode === 'manual') ? 1 : 0;
+
+    // Send mode flag (M101 for AUTO, M100 for MANUAL) immediately to PLC via MQTT
+    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false);
+
     if (mode === 'none') {
       showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
-      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา สั่งงานตรงได้อิสระ)');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา)');
     } else if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — เวลาฟิกซ์ 08:00-17:00 (ไม่ต้องส่งค่า Modbus)');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE (ไม่ต้องส่งค่า Modbus ไป PLC)');
+      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — ส่งคำสั่ง M101=ON ไป PLC ทันที (เวลาฟิกซ์ 08:00-17:00)');
+      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE — ส่งคำสั่ง M101=ON ไป PLC ทันที');
     } else if (mode === 'manual') {
-      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — กำหนดเวลาแล้วกด "บันทึกค่า" เพื่อส่ง Modbus');
-      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE (ยังไม่ส่ง Modbus จนกว่าจะกดบันทึกค่า หรือ ส่งข้อมูล MQTT)');
+      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ส่งคำสั่ง M100=ON ไป PLC ทันที (ตั้งเวลาแล้วกด "บันทึกค่า")');
+      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE — ส่งคำสั่ง M100=ON ไป PLC ทันที');
     }
   }
 
@@ -978,12 +984,6 @@
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
   function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true, saveBtn = 0) {
-    // If in AUTO mode and not Reset: DO NOT send Modbus commands to PLC!
-    if (state.scheduleMode === 'auto' && reset !== 1) {
-      console.log('⚙️ [AUTO MODE] Modbus write bypassed in Web App');
-      return false;
-    }
-
     // Number type validation
     const p = Number(power);
     const t = Number(temp);

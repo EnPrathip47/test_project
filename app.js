@@ -1166,25 +1166,6 @@
       updateTempBadge();
     }
 
-    // PLC Status Lights Sync (Y0/M2: Red, Y1/M3: Yellow, Y2/M1: Green)
-    const redCoil    = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.m2 === 1) ? 1 : 0;
-    const yellowCoil = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || mqttData.m3 === 1) ? 1 : 0;
-    const greenCoil  = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.m1 === 1) ? 1 : 0;
-
-    if (redCoil === 1) {
-      if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
-        updateSystemState('stopped');
-      }
-    } else if (greenCoil === 1) {
-      if (state.systemState !== 'timeout' && state.systemState !== 'stopped') {
-        updateSystemState('running');
-      }
-    } else if (yellowCoil === 1) {
-      if (state.scheduleMode !== 'auto' && state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
-        updateSystemState('idle');
-      }
-    }
-
     updateMqttStatusUI();
   }
 

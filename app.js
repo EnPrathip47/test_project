@@ -1167,34 +1167,25 @@
     }
 
     // PLC Status Lights (Y0: Red, Y1: Yellow, Y2: Green)
-    const redCoil = (mqttData.y0_red !== undefined) ? mqttData.y0_red : mqttData.y2_red;
-    const yellowCoil = mqttData.y1_yellow;
-    const greenCoil = (mqttData.y2_green !== undefined) ? mqttData.y2_green : mqttData.y0_green;
+    // Strictly read from Modbus coils. If offline or no coil ON -> ALL LAMPS OFF!
+    const plcOnline = (mqttData.plc_online !== undefined) ? Boolean(mqttData.plc_online) : state.plcOnline;
 
-    if (redCoil !== undefined || yellowCoil !== undefined || greenCoil !== undefined) {
+    if (!plcOnline) {
+      updateSystemState('off');
+    } else {
+      const redCoil = (mqttData.y0_red !== undefined) ? mqttData.y0_red : (mqttData.y2_red !== undefined ? mqttData.y2_red : 0);
+      const yellowCoil = (mqttData.y1_yellow !== undefined) ? mqttData.y1_yellow : 0;
+      const greenCoil = (mqttData.y2_green !== undefined) ? mqttData.y2_green : (mqttData.y0_green !== undefined ? mqttData.y0_green : 0);
+
       if (redCoil === 1) {
         updateSystemState('stopped');
       } else if (greenCoil === 1) {
-        // [แก้ไขบั๊ค]: ห้ามเปลี่ยนเป็น running ถ้าอยู่ในสถานะ timeout หรือ stopped (ระบบล็อกไฟแดงอยู่)
-        if (state.systemState !== 'timeout' && state.systemState !== 'stopped') {
-          updateSystemState('running');
-        }
+        updateSystemState('running');
       } else if (yellowCoil === 1) {
-        // [แก้ไขบั๊ค]: โหมด AUTO ห้ามเด้งกลับไปสีเหลือง (idle) ให้คงอยู่สถานะ ready หรือ running
-        if (state.scheduleMode !== 'auto' && state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
-          updateSystemState('idle');
-        }
-      }
-    } else {
-      // Machine State UI Sync Fallback
-      if (mqttData.machine_state === 'running' || state.acPower === 1) {
-        if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'ready') {
-          updateSystemState('running');
-        }
-      } else if (mqttData.machine_state === 'stopped' && state.systemState === 'running') {
-        if (state.scheduleMode !== 'auto' && state.systemState !== 'ready' && state.systemState !== 'timeout' && state.systemState !== 'stopped') {
-          updateSystemState('idle');
-        }
+        updateSystemState('idle');
+      } else {
+        // If all coils are 0 -> ALL lamps OFF!
+        updateSystemState('off');
       }
     }
 
@@ -1403,6 +1394,17 @@
         DOM.flowStopped?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
           DOM.currentStateBadge.textContent = 'Case 2: STOPPED (แดงติดค้าง - กดรีเซท)';
+          DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
+        }
+        break;
+
+      case 'off':
+      case 'none':
+        setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ไม่มีสัญญาณ Modbus)');
+        setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ (ไม่มีสัญญาณ Modbus)');
+        setLight(DOM.lightRed, DOM.stateRed, null, 'OFF', '❌ ดับ (ไม่มีสัญญาณ Modbus)');
+        if (DOM.currentStateBadge) {
+          DOM.currentStateBadge.textContent = 'NO MODBUS / OFFLINE (ไฟดับทั้งหมด)';
           DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
         }
         break;

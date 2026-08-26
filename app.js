@@ -786,11 +786,27 @@
         updateSystemState('ready');
       }
     } else {
-      // In manual mode, reset schedule and set light to IDLE
-      if (DOM.onDate) DOM.onDate.disabled = false;
-      if (DOM.offDate) DOM.offDate.disabled = false;
-      if (DOM.onTime) DOM.onTime.disabled = false;
-      if (DOM.offTime) DOM.offTime.disabled = false;
+      // In manual mode, reset schedule and clear input fields so they are blank
+      if (DOM.onDate) {
+        DOM.onDate.disabled = false;
+        DOM.onDate.value = '';
+      }
+      if (DOM.offDate) {
+        DOM.offDate.disabled = false;
+        DOM.offDate.value = '';
+      }
+      if (DOM.onTime) {
+        DOM.onTime.disabled = false;
+        DOM.onTime.value = '';
+      }
+      if (DOM.offTime) {
+        DOM.offTime.disabled = false;
+        DOM.offTime.value = '';
+      }
+      state.schedule.onDate = '';
+      state.schedule.offDate = '';
+      state.schedule.onTime = '';
+      state.schedule.offTime = '';
       state.schedule.enabled = false;
       state.acOn = false;
       if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {

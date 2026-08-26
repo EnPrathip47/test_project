@@ -1173,9 +1173,9 @@
     if (!plcOnline) {
       updateSystemState('off');
     } else {
-      const redCoil = (mqttData.y0_red !== undefined) ? mqttData.y0_red : (mqttData.y2_red !== undefined ? mqttData.y2_red : 0);
-      const yellowCoil = (mqttData.y1_yellow !== undefined) ? mqttData.y1_yellow : 0;
-      const greenCoil = (mqttData.y2_green !== undefined) ? mqttData.y2_green : (mqttData.y0_green !== undefined ? mqttData.y0_green : 0);
+      const redCoil    = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.m2 === 1) ? 1 : 0;
+      const yellowCoil = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || mqttData.m3 === 1) ? 1 : 0;
+      const greenCoil  = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.m1 === 1) ? 1 : 0;
 
       if (redCoil === 1) {
         updateSystemState('stopped');

@@ -1499,3 +1499,17 @@ body {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Disabled states for buttons and inputs */
+.temp-btn:disabled,
+.temp-chip:disabled,
+.mqtt-send-btn:disabled,
+.mqtt-select:disabled,
+.mqtt-power-btn:disabled {
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  filter: grayscale(0.7) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}

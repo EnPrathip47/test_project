@@ -514,6 +514,10 @@
     // Temp Presets Chips
     document.querySelectorAll('.temp-chip').forEach((chip) => {
       chip.addEventListener('click', (e) => {
+        if (state.scheduleMode === 'none') {
+          showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
+          return;
+        }
         const val = parseFloat(e.currentTarget.getAttribute('data-temp'));
         if (!isNaN(val)) setTargetTemp(val, true);
       });
@@ -524,12 +528,14 @@
     DOM.powerBtnOff?.addEventListener('click', () => setMqttPower(0, true));
 
     DOM.modeSelect?.addEventListener('change', () => {
+      if (state.scheduleMode === 'none') return;
       state.acMode = parseInt(DOM.modeSelect.value, 10);
       state.userModifiedMode = true;
       broadcastUiSync('change_control');
     });
 
     DOM.fanSelect?.addEventListener('change', () => {
+      if (state.scheduleMode === 'none') return;
       state.acFan = parseInt(DOM.fanSelect.value, 10);
       state.userModifiedFan = true;
       broadcastUiSync('change_control');
@@ -558,6 +564,10 @@
   }
 
   function adjustTempStep(delta) {
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
       return;
@@ -568,6 +578,7 @@
   }
 
   function setTargetTemp(val, isUserAction = false) {
+    if (state.scheduleMode === 'none') return;
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
       return;
@@ -765,7 +776,7 @@
     }
     if (DOM.modeInfoDesc) {
       if (isNone) {
-        DOM.modeInfoDesc.textContent = 'ไม่ตั้งเวลา | สั่งงานแอร์ ปรับอุณหภูมิ เปิด-ปิด ตรงได้อิสระ';
+        DOM.modeInfoDesc.textContent = 'โหมดเริ่มต้น (NONE) | สลับเป็นโหมด AUTO หรือ MANUAL เพื่อเริ่มใช้งาน';
       } else if (isAuto) {
         DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ';
       } else {
@@ -790,6 +801,10 @@
       if (DOM.offTime) DOM.offTime.disabled = true;
       if (DOM.onTime) DOM.onTime.value = '';
       if (DOM.offTime) DOM.offTime.value = '';
+      if (DOM.scheduleStatusTag) {
+        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE — กรุณาเลือกโหมด AUTO หรือ MANUAL';
+        DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
+      }
       if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
         updateSystemState('idle');
       }
@@ -1568,7 +1583,7 @@
   function updateControlButtons() {
     const isNone = (state.scheduleMode === 'none');
     const isAuto = (state.scheduleMode === 'auto');
-    const hasConfiguredSchedule = isNone || isAuto || isScheduleSet();
+    const hasConfiguredSchedule = isAuto || isScheduleSet();
 
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       if (DOM.btnSave) {
@@ -1579,8 +1594,12 @@
         DOM.btnStart.disabled = true;
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'ระบบถูกล็อก (กดรีเซท)';
       }
-      if (DOM.btnStop) DOM.btnStop.disabled = true;
-      if (DOM.btnReset) DOM.btnReset.disabled = false;
+      if (DOM.btnStop) {
+        DOM.btnStop.disabled = true;
+      }
+      if (DOM.btnReset) {
+        DOM.btnReset.disabled = false;
+      }
 
       // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -1595,13 +1614,61 @@
       if (DOM.modeSelect) DOM.modeSelect.disabled = true;
       if (DOM.fanSelect) DOM.fanSelect.disabled = true;
       if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
       if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = true;
       if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
       if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
       return;
     }
 
-    // Re-enable interactive elements when not in TIMEOUT / STOPPED
+    if (isNone) {
+      // ══════════════════════════════════════════════════════════════
+      // โหมด NONE: ล็อกปุ่มและอินพุตทุกอย่าง ยกเว้นปุ่มสลับโหมด!
+      // ══════════════════════════════════════════════════════════════
+      if (DOM.onDate) DOM.onDate.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
+      if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offTime) DOM.offTime.disabled = true;
+
+      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
+      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
+      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
+      if (DOM.powerBtnOn) DOM.powerBtnOn.disabled = true;
+      if (DOM.powerBtnOff) DOM.powerBtnOff.disabled = true;
+      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
+      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
+      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
+
+      if (DOM.btnSave) {
+        DOM.btnSave.disabled = true;
+        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'กรุณาสลับโหมดเพื่อเริ่มใช้งาน';
+        DOM.btnSave.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+      }
+      if (DOM.btnStart) {
+        DOM.btnStart.disabled = true;
+        if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'กรุณาสลับโหมดเพื่อเริ่มใช้งาน';
+        DOM.btnStart.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+      }
+      if (DOM.btnStop) {
+        DOM.btnStop.disabled = true;
+        DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+      }
+      if (DOM.btnReset) {
+        DOM.btnReset.disabled = true;
+        DOM.btnReset.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+      }
+
+      // ปลดล็อกเฉพาะปุ่มสลับโหมด (NONE / AUTO / MANUAL)
+      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
+      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
+      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // โหมด AUTO หรือ MANUAL: ปลดล็อกการใช้งานตามปกติ
+    // ══════════════════════════════════════════════════════════════
     if (DOM.targetTemp) DOM.targetTemp.disabled = false;
     if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
     if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
@@ -1610,31 +1677,32 @@
     if (DOM.modeSelect) DOM.modeSelect.disabled = false;
     if (DOM.fanSelect) DOM.fanSelect.disabled = false;
     if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
+    document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
+
     if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
     if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
     if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
 
-    // ปุ่มบันทึกค่า: ในโหมด NONE และ AUTO จะปิดการใช้งาน
+    // ปุ่มบันทึกค่า: ในโหมด AUTO จะปิดการใช้งาน (ฟิกซ์เวลา 08:00 - 17:00 แล้ว) ในโหมด MANUAL เปิดให้กด
     if (DOM.btnSave) {
-      DOM.btnSave.disabled = (isNone || isAuto);
+      DOM.btnSave.disabled = isAuto;
       if (DOM.btnSaveHint) {
-        DOM.btnSaveHint.textContent = isNone ? 'โหมด NONE สั่งงานตรงได้ทันที' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '');
+        DOM.btnSaveHint.textContent = isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '';
       }
-      DOM.btnSave.title = isNone ? 'โหมด NONE ไม่จำเป็นต้องกดบันทึกเวลา' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา');
+      DOM.btnSave.title = isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา';
     }
 
     // ปุ่มเริ่มทำงาน:
-    // - ในโหมด NONE และ AUTO: กดเริ่มทำงานได้ทันที (เมื่อไม่ได้ running)
-    const canStart = (isNone || isAuto)
+    // - โหมด AUTO: กดเริ่มทำงานได้ทันที
+    // - โหมด MANUAL: ต้องตั้งเวลาและกดบันทึกค่าก่อน
+    const canStart = isAuto
       ? (state.systemState !== 'running')
       : (hasConfiguredSchedule && state.systemState !== 'running');
 
     if (DOM.btnStart) {
       DOM.btnStart.disabled = !canStart;
       if (DOM.btnStartHint) {
-        if (isNone) {
-          DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงานสั่งตรง';
-        } else if (isAuto) {
+        if (isAuto) {
           DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงาน';
         } else {
           DOM.btnStartHint.textContent = hasConfiguredSchedule ? 'พร้อมเริ่มทำงาน' : 'ต้องกดบันทึกค่าก่อน';
@@ -1654,6 +1722,10 @@
   }
 
   function setMqttPower(val, isUserAction = false) {
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL ก่อน');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
       return;
@@ -1680,6 +1752,10 @@
   // ============================================================
 
   function saveSchedule() {
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL ก่อน');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('error', 'ระบบล็อกอยู่ (ไฟแดง) กรุณากดปุ่ม "รีเซท" ก่อน');
       return;
@@ -1776,6 +1852,10 @@
   }
 
   function startAC() {
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL ก่อน');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('error', 'ไม่สามารถเริ่มทำงานได้! ระบบล็อกอยู่ ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
       return;
@@ -1876,6 +1956,7 @@
   }
 
   function stopAC() {
+    if (state.scheduleMode === 'none') return;
     state.acOn = false;
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON)
     updateSystemState('stopped');
@@ -1911,143 +1992,7 @@
     applyScheduleMode('none');
 
     broadcastUiSync('reset_system');
-    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (สั่งงานตรงได้ทันที)');
-    showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
-  }
-
-  function startAC() {
-    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
-      showToast('error', 'ไม่สามารถเริ่มทำงานได้! ระบบล็อกอยู่ ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
-      return;
-    }
-
-    const isAutoMode = (state.scheduleMode === 'auto');
-
-    if (!isAutoMode && !isScheduleSet()) {
-      showToast('error', 'กรุณากดปุ่ม "บันทึกค่า" เพื่อตั้งเวลาก่อนกดเริ่มทำงาน');
-      return;
-    }
-    const todayIso = getTodayIso();
-
-    let onDateVal, offDateVal, onTimeVal, offTimeVal;
-
-    if (isAutoMode) {
-      onDateVal = todayIso;
-      offDateVal = todayIso;
-      onTimeVal = '08:00';
-      offTimeVal = '17:00';
-    } else {
-      onDateVal  = state.schedule.onDate  || DOM.onDate?.value  || todayIso;
-      offDateVal = state.schedule.offDate || DOM.offDate?.value || onDateVal;
-      onTimeVal  = state.schedule.onTime  || DOM.onTime?.value;
-      offTimeVal = state.schedule.offTime || DOM.offTime?.value;
-    }
-
-    const targetTemp = getValidTargetTemp();
-
-    const finalOnDate  = onDateVal  || todayIso;
-    const finalOffDate = offDateVal || finalOnDate;
-
-    const onIso = parseThaiDateToIso(finalOnDate);
-    const offIso = parseThaiDateToIso(finalOffDate);
-    if (offIso < onIso) {
-      showToast('error', 'วันที่ปิดแอร์ต้องไม่เกิดขึ้นก่อนวันที่เปิดแอร์');
-      return;
-    }
-
-    const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
-    const now = new Date();
-    const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
-
-    if (!start || !stop) {
-      showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
-      return;
-    }
-
-    if (!isAutoMode) {
-      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
-      if (start.getTime() < now.getTime() - 10000) {
-        showToast('error', `ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
-        return;
-      }
-
-      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
-      if (stop.getTime() <= now.getTime()) {
-        showToast('error', `ห้ามตั้งเวลาปิดแอร์ย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
-        return;
-      }
-
-      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-        state.schedule.enabled = false;
-        return;
-      }
-    }
-
-    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
-    state.schedule.onDate  = finalOnDate;
-    state.schedule.onTime  = onTimeVal;
-    state.schedule.offDate = finalOffDate;
-    state.schedule.offTime = offTimeVal;
-    state.schedule.enabled = true;
-
-    const isFutureDate = (onIso > todayIso);
-    const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
-
-    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14
-    if (now >= start) {
-      state.acOn = true;
-      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
-      updateSystemState('running');
-      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON สำเร็จ`);
-      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ส่ง M5=ON ไปยัง PLC)`);
-    } else {
-      state.acOn = false;
-      updateSystemState('ready');
-      addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
-      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-    }
-  }
-
-  function stopAC() {
-    state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON)
-    updateSystemState('stopped');
-    addLog('warning', 'กดหยุดการทำงาน — ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3 (ไฟแดงติดค้าง)');
-    showToast('warning', 'หยุดทำงานแล้ว — ไฟแดงติดค้าง (ต้องกดรีเซท)');
-  }
-
-  function resetSystem() {
-    state.acOn = false;
-    state.schedule.enabled = false;
-    state.schedule.onTime = '';
-    state.schedule.offTime = '';
-    state.schedule.onDate = '';
-    state.schedule.offDate = '';
-
-    if (DOM.onTime) DOM.onTime.value = '';
-    if (DOM.offTime) DOM.offTime.value = '';
-    if (DOM.onDate) DOM.onDate.value = '';
-    if (DOM.offDate) DOM.offDate.value = '';
-
-    // เมื่อกดรีเซท ให้สลับเด้งกลับสู่โหมด NONE MODE ทันที (ทั้งจาก AUTO และ MANUAL)
-    state.scheduleMode = 'none';
-
-    // ปลดล็อกสถานะระบบกลับสู่ idle
-    state.systemState = 'idle';
-
-    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
-    saveSettings();
-
-    // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
-    applyScheduleMode('none');
-
-    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (สั่งงานตรงได้ทันที)');
+    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
     showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
   }
 

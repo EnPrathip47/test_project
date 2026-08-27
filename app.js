@@ -1985,11 +1985,11 @@
   function stopAC() {
     if (state.scheduleMode === 'none') return;
     state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON)
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON & IR 10x OFF)
     updateSystemState('stopped');
     broadcastUiSync('stop_ac');
-    addLog('warning', 'กดหยุดการทำงาน — ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3 (ไฟแดงติดค้าง)');
-    showToast('warning', 'หยุดทำงานแล้ว — ไฟแดงติดค้าง (ต้องกดรีเซท)');
+    addLog('warning', 'กดหยุดการทำงาน — สั่งปิดแอร์และยิงสัญญาณ IR 1 รอบ (10 ครั้ง) (ไฟแดงติดค้าง)');
+    showToast('warning', 'หยุดทำงานแล้ว — ยิง IR ปิดแอร์ 1 รอบ (10 ครั้ง) (ไฟแดงติดค้าง)');
   }
 
   function resetSystem() {

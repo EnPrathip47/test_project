@@ -597,7 +597,6 @@
 
     saveSettings();
     updateMqttTempDisplay();
-    showToast('info', `ตั้งอุณหภูมิแอร์เป็น ${validVal}°C`);
   }
 
   // Validate Target Temperature (Must be between 18°C and 27°C)
@@ -608,7 +607,6 @@
       if (isNaN(rawVal)) valid = 25;
       if (DOM.targetTemp) DOM.targetTemp.value = valid;
       state.targetTemp = valid;
-      showToast('warning', 'อุณหภูมิต้องอยู่ระหว่าง 18°C ถึง 27°C (ปรับเป็นค่าที่ถูกต้องให้อัตโนมัติ)');
       return valid;
     }
     state.targetTemp = rawVal;
@@ -990,8 +988,6 @@
     if (data.systemState && data.systemState !== state.systemState) {
       updateSystemState(data.systemState);
     }
-
-    showToast('info', `🔄 [Sync] ซิงค์ข้อมูลเรียลไทม์จากอุปกรณ์อื่น (${data.senderId.substring(0, 8)})`);
   }
 
   function connectMqttBroker() {
@@ -2115,11 +2111,31 @@
   }
 
   // ============================================================
-  //  TOAST NOTIFICATIONS
+  //  TOAST NOTIFICATIONS (SINGLE-TOAST ONLY ON USER CLICK)
   // ============================================================
+
+  let currentToastTimeout = null;
+  let lastToastMsg = '';
+  let lastToastTime = 0;
 
   function showToast(type, message) {
     if (!DOM.toastContainer) return;
+    const now = Date.now();
+
+    // Prevent duplicate toast spamming within 1.5 seconds
+    if (message === lastToastMsg && now - lastToastTime < 1500) {
+      return;
+    }
+    lastToastMsg = message;
+    lastToastTime = now;
+
+    // Clear any previous toast immediately to show only 1 toast at a time
+    if (currentToastTimeout) {
+      clearTimeout(currentToastTimeout);
+      currentToastTimeout = null;
+    }
+    DOM.toastContainer.innerHTML = '';
+
     const icons = {
       info: '💡',
       success: '✅',
@@ -2136,10 +2152,12 @@
 
     DOM.toastContainer.appendChild(toast);
 
-    setTimeout(() => {
+    currentToastTimeout = setTimeout(() => {
       toast.classList.add('toast--removing');
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
+      setTimeout(() => {
+        if (toast.parentElement) toast.remove();
+      }, 200);
+    }, 2000);
   }
 
   // ── Utilities ──

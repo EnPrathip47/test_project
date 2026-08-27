@@ -24,8 +24,16 @@
   };
 
 
+  // Generate or retrieve persistent Session Client ID for Real-Time Presence & Sync
+  if (!sessionStorage.getItem('aircon_client_id')) {
+    sessionStorage.setItem('aircon_client_id', 'usr_' + Math.random().toString(36).substring(2, 8));
+  }
+
   // ── State ──
   const state = {
+    clientId: sessionStorage.getItem('aircon_client_id'),
+    activeUsers: {},
+    presenceTimer: null,
     mqttClient: null,
     connected: false,
     demoMode: false,
@@ -210,11 +218,14 @@
     // Toast
     toastContainer: document.getElementById('toastContainer'),
 
-    // Guide Modal
+    // Guide Modal & Badges
     headerGuideBtn: document.getElementById('headerGuideBtn'),
+    btnOpenQuickGuideModal: document.getElementById('btnOpenQuickGuideModal'),
     guideModal: document.getElementById('guideModal'),
     guideModalClose: document.getElementById('guideModalClose'),
     guideModalBackdrop: document.getElementById('guideModalBackdrop'),
+    activeUsersCountText: document.getElementById('activeUsersCountText'),
+    activeUsersStatus: document.getElementById('activeUsersStatus'),
 
     // Temp Buttons
     tempMinusBtn: document.getElementById('tempMinusBtn'),
@@ -448,23 +459,29 @@
     DOM.onDate?.addEventListener('change', () => {
       validateDateNotPast(DOM.onDate);
       updateScheduleInputsState();
+      broadcastUiSync('change_input');
     });
     DOM.offDate?.addEventListener('change', () => {
       validateDateNotPast(DOM.offDate);
       updateScheduleInputsState();
+      broadcastUiSync('change_input');
     });
     DOM.onTime?.addEventListener('input', () => {
       updateScheduleInputsState();
+      broadcastUiSync('change_input');
     });
     DOM.onTime?.addEventListener('change', () => {
       validateTimeInterval();
+      broadcastUiSync('change_input');
     });
 
     DOM.offTime?.addEventListener('input', () => {
       updateScheduleInputsState();
+      broadcastUiSync('change_input');
     });
     DOM.offTime?.addEventListener('change', () => {
       validateTimeInterval();
+      broadcastUiSync('change_input');
     });
 
     DOM.targetTemp?.addEventListener('change', () => {
@@ -472,10 +489,12 @@
       getValidTargetTemp();
       updateMqttTempDisplay();
       saveSettings();
+      broadcastUiSync('change_control');
     });
     DOM.targetTemp?.addEventListener('input', () => {
       state.userModifiedTemp = true;
       updateMqttTempDisplay();
+      broadcastUiSync('change_control');
     });
     DOM.targetTemp?.addEventListener('blur', () => {
       getValidTargetTemp();
@@ -484,6 +503,7 @@
 
     // Guide Modal Listeners
     DOM.headerGuideBtn?.addEventListener('click', openGuideModal);
+    DOM.btnOpenQuickGuideModal?.addEventListener('click', openGuideModal);
     DOM.guideModalClose?.addEventListener('click', closeGuideModal);
     DOM.guideModalBackdrop?.addEventListener('click', closeGuideModal);
 
@@ -506,11 +526,13 @@
     DOM.modeSelect?.addEventListener('change', () => {
       state.acMode = parseInt(DOM.modeSelect.value, 10);
       state.userModifiedMode = true;
+      broadcastUiSync('change_control');
     });
 
     DOM.fanSelect?.addEventListener('change', () => {
       state.acFan = parseInt(DOM.fanSelect.value, 10);
       state.userModifiedFan = true;
+      broadcastUiSync('change_control');
     });
 
     DOM.btnSendMqtt?.addEventListener('click', sendMqttCommandFromUI);
@@ -684,6 +706,7 @@
     state.scheduleMode = mode;
     applyScheduleMode(mode);
     saveSettings();
+    broadcastUiSync('change_mode', { scheduleMode: mode });
 
     const modeAutoFlag   = (mode === 'auto')   ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
@@ -828,6 +851,134 @@
   //  HIVEMQ CLOUD MQTT OVER WEBSOCKET (WSS PORT 8884)
   // ============================================================
 
+  // ── Real-Time Cross-Device Sync & Presence Tracker ──
+  function sendPresenceHeartbeat() {
+    if (!state.mqttClient || !state.mqttClient.connected) return;
+    try {
+      const presencePayload = {
+        type: 'presence',
+        clientId: state.clientId,
+        timestamp: Date.now()
+      };
+      state.mqttClient.publish(CONFIG.topicControl, JSON.stringify(presencePayload));
+    } catch (e) {}
+  }
+
+  function startPresenceTimer() {
+    if (state.presenceTimer) clearInterval(state.presenceTimer);
+    state.activeUsers[state.clientId] = Date.now();
+    updateActiveUsersCount();
+    sendPresenceHeartbeat();
+    state.presenceTimer = setInterval(() => {
+      sendPresenceHeartbeat();
+      pruneInactiveUsers();
+    }, 4000);
+  }
+
+  function stopPresenceTimer() {
+    if (state.presenceTimer) {
+      clearInterval(state.presenceTimer);
+      state.presenceTimer = null;
+    }
+  }
+
+  function pruneInactiveUsers() {
+    const now = Date.now();
+    let changed = false;
+    Object.keys(state.activeUsers).forEach(id => {
+      if (now - state.activeUsers[id] > 12000 && id !== state.clientId) {
+        delete state.activeUsers[id];
+        changed = true;
+      }
+    });
+    state.activeUsers[state.clientId] = now;
+    if (changed || true) {
+      updateActiveUsersCount();
+    }
+  }
+
+  function updateActiveUsersCount() {
+    const count = Object.keys(state.activeUsers).length;
+    if (DOM.activeUsersCountText) {
+      DOM.activeUsersCountText.textContent = `👥 ออนไลน์: ${count} คน`;
+    }
+  }
+
+  function broadcastUiSync(actionType, extraData = {}) {
+    if (!state.mqttClient || !state.mqttClient.connected) return;
+    const syncPayload = {
+      type: 'ui_sync',
+      senderId: state.clientId,
+      action: actionType,
+      scheduleMode: state.scheduleMode,
+      schedule: { ...state.schedule },
+      targetTemp: getValidTargetTemp(),
+      acMode: state.acMode,
+      acFan: state.acFan,
+      systemState: state.systemState,
+      onDate: DOM.onDate?.value || state.schedule.onDate || '',
+      offDate: DOM.offDate?.value || state.schedule.offDate || '',
+      onTime: DOM.onTime?.value || state.schedule.onTime || '',
+      offTime: DOM.offTime?.value || state.schedule.offTime || '',
+      ...extraData
+    };
+    try {
+      state.mqttClient.publish(CONFIG.topicControl, JSON.stringify(syncPayload));
+    } catch(e) {}
+  }
+
+  function handleUiSyncMessage(data) {
+    if (!data || data.senderId === state.clientId) return; // Ignore own messages
+
+    // 1. Sync Schedule Mode
+    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
+      applyScheduleMode(data.scheduleMode, false);
+    }
+
+    // 2. Sync Date & Time Inputs
+    if (data.onDate !== undefined && DOM.onDate && document.activeElement !== DOM.onDate) {
+      DOM.onDate.value = data.onDate;
+      state.schedule.onDate = data.onDate;
+    }
+    if (data.offDate !== undefined && DOM.offDate && document.activeElement !== DOM.offDate) {
+      DOM.offDate.value = data.offDate;
+      state.schedule.offDate = data.offDate;
+    }
+    if (data.onTime !== undefined && DOM.onTime && document.activeElement !== DOM.onTime) {
+      DOM.onTime.value = data.onTime;
+      state.schedule.onTime = data.onTime;
+    }
+    if (data.offTime !== undefined && DOM.offTime && document.activeElement !== DOM.offTime) {
+      DOM.offTime.value = data.offTime;
+      state.schedule.offTime = data.offTime;
+    }
+
+    // 3. Sync Target Temp, Mode, Fan
+    if (data.targetTemp !== undefined) {
+      const t = parseFloat(data.targetTemp);
+      if (!isNaN(t) && t >= 18 && t <= 27) {
+        state.targetTemp = t;
+        if (DOM.targetTemp) DOM.targetTemp.value = t;
+        updateMqttTempDisplay();
+      }
+    }
+    if (data.acMode !== undefined) {
+      state.acMode = parseInt(data.acMode, 10);
+      if (DOM.modeSelect) DOM.modeSelect.value = state.acMode;
+    }
+    if (data.acFan !== undefined) {
+      state.acFan = parseInt(data.acFan, 10);
+      if (DOM.fanSelect) DOM.fanSelect.value = state.acFan;
+    }
+
+    // 4. Sync System State
+    if (data.systemState && data.systemState !== state.systemState) {
+      updateSystemState(data.systemState);
+    }
+
+    showToast('info', `🔄 [Sync] ซิงค์ข้อมูลเรียลไทม์จากอุปกรณ์อื่น (${data.senderId.substring(0, 8)})`);
+  }
+
   function connectMqttBroker() {
     if (state.demoMode) stopDemo();
     if (state.mqttClient) {
@@ -902,6 +1053,9 @@
 
         state.mqttClient.subscribe(CONFIG.topicStatus);
         state.mqttClient.subscribe(CONFIG.topicAvailability);
+        state.mqttClient.subscribe(CONFIG.topicControl);
+
+        startPresenceTimer();
 
         addLog('success', 'เชื่อมต่อ HiveMQ Cloud MQTT Over WSS สำเร็จ!');
         showToast('success', 'เชื่อมต่อ HiveMQ MQTT สำเร็จ');
@@ -925,6 +1079,18 @@
             state.esp32Online = true;
             const statusData = JSON.parse(msgStr);
             handleMqttStatus(statusData);
+          } else if (topic === CONFIG.topicControl) {
+            try {
+              const controlData = JSON.parse(msgStr);
+              if (controlData && typeof controlData === 'object') {
+                if (controlData.type === 'presence') {
+                  state.activeUsers[controlData.clientId] = Date.now();
+                  updateActiveUsersCount();
+                } else if (controlData.type === 'ui_sync') {
+                  handleUiSyncMessage(controlData);
+                }
+              }
+            } catch(e) {}
           }
         } catch (err) {
           console.warn('Invalid MQTT Message:', topic, payload.toString());
@@ -1454,99 +1620,52 @@
       if (DOM.btnSaveHint) {
         DOM.btnSaveHint.textContent = isNone ? 'โหมด NONE สั่งงานตรงได้ทันที' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '');
       }
-      DOM.btnSave.title = isNone ? 'โหมด NONE ไม่จำเป็นต้องกดบันทึกเวลา' : (isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา');
-    }
+      DOM.btnSave.title = isNone ? 'โหมด NONE    // บันทึกค่าสำเร็จ -> ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
+    state.acOn = false;
+    updateSystemState('ready');
+    const isFutureDate = (onIso > todayIso);
+    const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
 
-    // ปุ่มเริ่มทำงาน:
-    // - ในโหมด NONE และ AUTO: กดเริ่มทำงานได้ทันที (เมื่อไม่ได้ running)
-    const canStart = (isNone || isAuto)
-      ? (state.systemState !== 'running')
-      : (hasConfiguredSchedule && state.systemState !== 'running');
-
-    if (DOM.btnStart) {
-      DOM.btnStart.disabled = !canStart;
-      if (DOM.btnStartHint) {
-        if (isNone) {
-          DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงานสั่งตรง';
-        } else if (isAuto) {
-          DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงาน' : 'กดเพื่อเริ่มทำงาน';
-        } else {
-          DOM.btnStartHint.textContent = hasConfiguredSchedule ? 'พร้อมเริ่มทำงาน' : 'ต้องกดบันทึกค่าก่อน';
-        }
-      }
-    }
-
-    // ปุ่มหยุดทำงาน: ใช้งานได้เมื่อระบบกำลัง running
-    if (DOM.btnStop) {
-      DOM.btnStop.disabled = (state.systemState !== 'running');
-    }
-
-    // ปุ่มรีเซท: สามารถกดรีเซทระบบได้เสมอ
-    if (DOM.btnReset) {
-      DOM.btnReset.disabled = false;
-    }
+    broadcastUiSync('save_schedule');
+    addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
+    showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
   }
 
-  function setMqttPower(val, isUserAction = false) {
+  function startAC() {
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
-      showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
-      return;
-    }
-    state.acPower = val;
-    if (isUserAction) {
-      state.userModifiedPower = true;
-    }
-    if (DOM.powerBtnOn && DOM.powerBtnOff) {
-      DOM.powerBtnOn.classList.toggle('mqtt-power-btn--active', val === 1);
-      DOM.powerBtnOff.classList.toggle('mqtt-power-btn--active', val === 0);
-    }
-  }
-
-  function updateMqttTempDisplay() {
-    if (DOM.mqttTempDisplay) {
-      const temp = state.targetTemp || 25;
-      DOM.mqttTempDisplay.textContent = `${temp}°C`;
-    }
-  }
-
-  // ============================================================
-  //  CONTROLS (SAVE / START / STOP / RESET)
-  // ============================================================
-
-  function saveSchedule() {
-    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
-      showToast('error', 'ระบบล็อกอยู่ (ไฟแดง) กรุณากดปุ่ม "รีเซท" ก่อน');
+      showToast('error', 'ไม่สามารถเริ่มทำงานได้! ระบบล็อกอยู่ ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
       return;
     }
 
     const isAutoMode = (state.scheduleMode === 'auto');
+
+    if (!isAutoMode && !isScheduleSet()) {
+      showToast('error', 'กรุณากดปุ่ม "บันทึกค่า" เพื่อตั้งเวลาก่อนกดเริ่มทำงาน');
+      return;
+    }
     const todayIso = getTodayIso();
 
     let onDateVal, offDateVal, onTimeVal, offTimeVal;
 
     if (isAutoMode) {
-      // Auto mode: fixed 08:00-17:00 using today's date
       onDateVal = todayIso;
       offDateVal = todayIso;
       onTimeVal = '08:00';
       offTimeVal = '17:00';
     } else {
-      // Manual mode: use user input
-      onDateVal = DOM.onDate?.value || todayIso;
-      offDateVal = DOM.offDate?.value || onDateVal;
-      onTimeVal = DOM.onTime?.value;
-      offTimeVal = DOM.offTime?.value;
+      onDateVal  = state.schedule.onDate  || DOM.onDate?.value  || todayIso;
+      offDateVal = state.schedule.offDate || DOM.offDate?.value || onDateVal;
+      onTimeVal  = state.schedule.onTime  || DOM.onTime?.value;
+      offTimeVal = state.schedule.offTime || DOM.offTime?.value;
     }
 
     const targetTemp = getValidTargetTemp();
 
-    if (!onTimeVal || !offTimeVal) {
-      showToast('error', 'กรุณากำหนดเวลาเปิดและเวลาปิดแอร์');
-      return;
-    }
+    const finalOnDate  = onDateVal  || todayIso;
+    const finalOffDate = offDateVal || finalOnDate;
 
-    const onIso = parseThaiDateToIso(onDateVal);
-    const offIso = parseThaiDateToIso(offDateVal);
+    const onIso = parseThaiDateToIso(finalOnDate);
+    const offIso = parseThaiDateToIso(finalOffDate);
     if (offIso < onIso) {
       showToast('error', 'วันที่ปิดแอร์ต้องไม่เกิดขึ้นก่อนวันที่เปิดแอร์');
       return;
@@ -1554,7 +1673,7 @@
 
     const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
     const now = new Date();
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+    const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
 
     if (!start || !stop) {
       showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
@@ -1579,6 +1698,78 @@
       // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
+        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        state.schedule.enabled = false;
+        return;
+      }
+    }
+
+    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
+    state.schedule.onDate  = finalOnDate;
+    state.schedule.onTime  = onTimeVal;
+    state.schedule.offDate = finalOffDate;
+    state.schedule.offTime = offTimeVal;
+    state.schedule.enabled = true;
+
+    const isFutureDate = (onIso > todayIso);
+    const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
+
+    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14
+    if (now >= start) {
+      state.acOn = true;
+      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
+      updateSystemState('running');
+      broadcastUiSync('start_ac');
+      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON สำเร็จ`);
+      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ส่ง M5=ON ไปยัง PLC)`);
+    } else {
+      state.acOn = false;
+      updateSystemState('ready');
+      broadcastUiSync('start_ac');
+      addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
+      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
+    }
+  }
+
+  function stopAC() {
+    state.acOn = false;
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON)
+    updateSystemState('stopped');
+    broadcastUiSync('stop_ac');
+    addLog('warning', 'กดหยุดการทำงาน — ส่งคำสั่งปิดแอร์ไปยัง ESP32-S3 (ไฟแดงติดค้าง)');
+    showToast('warning', 'หยุดทำงานแล้ว — ไฟแดงติดค้าง (ต้องกดรีเซท)');
+  }
+
+  function resetSystem() {
+    state.acOn = false;
+    state.schedule.enabled = false;
+    state.schedule.onTime = '';
+    state.schedule.offTime = '';
+    state.schedule.onDate = '';
+    state.schedule.offDate = '';
+
+    if (DOM.onTime) DOM.onTime.value = '';
+    if (DOM.offTime) DOM.offTime.value = '';
+    if (DOM.onDate) DOM.onDate.value = '';
+    if (DOM.offDate) DOM.offDate.value = '';
+
+    // เมื่อกดรีเซท ให้สลับเด้งกลับสู่โหมด NONE MODE ทันที (ทั้งจาก AUTO และ MANUAL)
+    state.scheduleMode = 'none';
+
+    // ปลดล็อกสถานะระบบกลับสู่ idle
+    state.systemState = 'idle';
+
+    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
+    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
+    saveSettings();
+
+    // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
+    applyScheduleMode('none');
+
+    broadcastUiSync('reset_system');
+    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (สั่งงานตรงได้ทันที)');
+    showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
+  }    if (diffMs < 60 * 1000) {
         showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;

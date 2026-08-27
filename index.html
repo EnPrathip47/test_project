@@ -37,12 +37,19 @@
           <p class="header__subtitle">ระบบควบคุมการทำงานของแอร์</p>
         </div>
       </div>
-      <div class="header__status">
+        <a href="docs/user_manual.pdf" target="_blank" download="Air_Candy_User_Manual.pdf" class="header__guide-btn" style="text-decoration: none;" title="ดาวน์โหลด / เปิดคู่มือการใช้งาน PDF">
+          <span class="guide-btn__icon">📄</span>
+          <span class="guide-btn__text">โหลดคู่มือ PDF</span>
+        </a>
         <button class="header__guide-btn" id="headerGuideBtn" title="เปิดคู่มือการใช้งานและแผนผัง">
           <span class="guide-btn__icon">📖</span>
           <span class="guide-btn__text">คู่มือการใช้งาน</span>
         </button>
         <div class="mqtt-status-badges">
+          <span class="mqtt-status-badge mqtt-status-badge--users" id="activeUsersStatus" title="จำนวนผู้ใช้งานที่กำลังออนไลน์ในขณะนี้ (Real-Time Presence)">
+            <span class="mqtt-status-badge__dot mqtt-status-badge__dot--users"></span>
+            <span id="activeUsersCountText">👥 ออนไลน์: 1 คน</span>
+          </span>
           <span class="mqtt-status-badge mqtt-status-badge--offline" id="esp32Status" title="ESP32-S3 Gateway">
             <span class="mqtt-status-badge__dot"></span>
             ESP32: OFFLINE
@@ -71,6 +78,51 @@
 
   <!-- ===== MAIN CONTENT ===== -->
   <main class="main">
+
+    <!-- ── QUICK OPERATING GUIDE & REALTIME SYNC BANNER ── -->
+    <section class="section" id="sectionQuickGuide">
+      <div class="card card--guide-banner">
+        <div class="card__header">
+          <h2 class="card__title">
+            <span class="card__title-icon">📖</span>
+            คู่มือใช้งานรวดเร็ว & ซิงค์เรียลไทม์ (Cross-Device Real-Time Sync)
+          </h2>
+          <button class="btn btn--secondary btn--sm" id="btnOpenQuickGuideModal">
+            📖 เปิดคู่มือฉบับเต็ม
+          </button>
+        </div>
+        <div class="guide-grid">
+          <div class="guide-card-item">
+            <div class="guide-card-item__icon">🤖</div>
+            <div class="guide-card-item__content">
+              <h4>โหมด AUTO</h4>
+              <p>ทำงานเวลาฟิกซ์ 08:00 - 17:00 น. อัตโนมัติ สั่ง Coil M101=ON บน PLC (ข้าม D500-D504)</p>
+            </div>
+          </div>
+          <div class="guide-card-item">
+            <div class="guide-card-item__icon">🛠️</div>
+            <div class="guide-card-item__content">
+              <h4>โหมด MANUAL</h4>
+              <p>กำหนดวันเวลาเปิด-ปิดเอง ต้องกด 💾 <strong>บันทึกค่า</strong> เพื่อส่ง D500-D504 + M42=ON</p>
+            </div>
+          </div>
+          <div class="guide-card-item">
+            <div class="guide-card-item__icon">⚡</div>
+            <div class="guide-card-item__content">
+              <h4>โหมด NONE</h4>
+              <p>สั่งงานตรงเปิด/ปิด ปรับอุณหภูมิ 18-27°C และพัดลม ส่ง D10-D14 + M8=ON ได้ทันที</p>
+            </div>
+          </div>
+          <div class="guide-card-item">
+            <div class="guide-card-item__icon">🔄</div>
+            <div class="guide-card-item__content">
+              <h4>Real-Time Sync</h4>
+              <p>ปรับเปลี่ยนค่าจากอุปกรณ์ใด จะซิงค์หน้าเว็บทุกเครื่องแบบ Real-time ทันที</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- ── TEMPERATURE SENSORS ── -->
     <section class="section" id="sectionTemperature">
@@ -217,10 +269,14 @@
             <span class="schedule-status-tag" id="scheduleStatusTag">⚠️ รอการตั้งเวลา</span>
           </div>
 
-          <!-- ═══ AUTO / MANUAL MODE TOGGLE ═══ -->
+          <!-- ═══ NONE / AUTO / MANUAL MODE TOGGLE ═══ -->
           <div class="mode-toggle-bar" id="modeToggleBar">
             <div class="mode-toggle">
-              <button type="button" class="mode-toggle__btn mode-toggle__btn--auto mode-toggle__btn--active" id="modeAutoBtn" title="Auto: ทำงานทุกวัน 08:00-17:00 ปรับได้แค่อุณหภูมิ">
+              <button type="button" class="mode-toggle__btn mode-toggle__btn--none mode-toggle__btn--active" id="modeNoneBtn" title="NONE: ไม่ตั้งเวลา สั่งงานตรงได้อิสระ">
+                <span class="mode-toggle__icon">⚡</span>
+                <span class="mode-toggle__label">NONE</span>
+              </button>
+              <button type="button" class="mode-toggle__btn mode-toggle__btn--auto" id="modeAutoBtn" title="Auto: ทำงานทุกวัน 08:00-17:00 ปรับได้แค่อุณหภูมิ">
                 <span class="mode-toggle__icon">🔄</span>
                 <span class="mode-toggle__label">AUTO</span>
               </button>
@@ -231,8 +287,8 @@
               <div class="mode-toggle__slider" id="modeSlider"></div>
             </div>
             <div class="mode-info" id="modeInfo">
-              <span class="mode-info__badge mode-info__badge--auto" id="modeInfoBadge">🔄 AUTO MODE</span>
-              <span class="mode-info__desc" id="modeInfoDesc">ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ</span>
+              <span class="mode-info__badge mode-info__badge--none" id="modeInfoBadge">⚡ NONE MODE</span>
+              <span class="mode-info__desc" id="modeInfoDesc">ไม่ตั้งเวลา | สั่งงานแอร์ ปรับอุณหภูมิ เปิด-ปิด ตรงได้อิสระ</span>
             </div>
           </div>
 
@@ -504,8 +560,9 @@
           </div>
         </div>
       </div>
-      <div class="guide-modal__footer">
-        <a href="docs/mobile_guide.html" target="_blank" class="btn btn--connect" style="text-decoration:none;">🌐 เปิดหน้าเว็บคู่มือฉบับเต็ม</a>
+      <div class="guide-modal__footer" style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+        <a href="docs/user_manual.pdf" target="_blank" download="Air_Candy_User_Manual.pdf" class="btn btn--connect" style="text-decoration:none; background: linear-gradient(135deg, #00d4ff 0%, #0077ff 100%); color: #fff; font-weight: 600;">📄 ดาวน์โหลด / เปิดไฟล์คู่มือ (PDF)</a>
+        <a href="docs/mobile_guide.html" target="_blank" class="btn btn--connect" style="text-decoration:none; background: rgba(0, 212, 255, 0.12); color: var(--color-cyan);">🌐 เปิดอ่านในเบราว์เซอร์</a>
       </div>
     </div>
   </div>

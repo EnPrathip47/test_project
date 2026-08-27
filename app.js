@@ -18,6 +18,7 @@
     topicControl: "aircon/control",       // หัวข้อ MQTT รับคำสั่งจากเว็บ → ESP32
     topicStatus: "aircon/status",         // หัวข้อ MQTT รับสถานะจาก ESP32 → เว็บ
     topicAvailability: "aircon/availability", // หัวข้อ MQTT Heartbeat Online/Offline
+    topicSync: "aircon/sync",             // หัวข้อ MQTT สำหรับ Real-time Cross-Device Sync และ Presence
     reconnectDelay: 3000,
     maxReconnectAttempts: 10,
     demoUpdateInterval: 2000,
@@ -717,15 +718,16 @@
     saveSettings();
     broadcastUiSync('change_mode', { scheduleMode: mode });
 
+    const modeNoneFlag   = (mode === 'none')   ? 1 : 0;
     const modeAutoFlag   = (mode === 'auto')   ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
 
-    // Send mode flag (M101 for AUTO, M100 for MANUAL) immediately to PLC via MQTT
-    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false);
+    // Send mode flag (M9 for NONE, M101 for AUTO, M100 for MANUAL) immediately to PLC via MQTT
+    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
 
     if (mode === 'none') {
-      showToast('info', '⚡ เปลี่ยนเป็นโหมด NONE — ไม่ตั้งเวลา สั่งงานตรงได้อิสระ');
-      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไม่ตั้งเวลา)');
+      showToast('info', '⚡ โหมด NONE — ส่งคำสั่ง M9=ON ไป PLC (ไฟเหลืองติดค้าง)');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE — ส่งคำสั่ง M9=ON ไป PLC (ไฟเหลืองติดค้าง)');
     } else if (mode === 'auto') {
       showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — ส่งคำสั่ง M101=ON ไป PLC ทันที (เวลาฟิกซ์ 08:00-17:00)');
       addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE — ส่งคำสั่ง M101=ON ไป PLC ทันที');
@@ -762,19 +764,19 @@
     // Mode info badge & description
     if (DOM.modeInfoBadge) {
       if (isNone) {
-        DOM.modeInfoBadge.textContent = '⚡ NONE MODE';
+        DOM.modeInfoBadge.textContent = '⚡ NONE MODE (M9)';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--none';
       } else if (isAuto) {
-        DOM.modeInfoBadge.textContent = '🔄 AUTO MODE';
+        DOM.modeInfoBadge.textContent = '🔄 AUTO MODE (M101)';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--auto';
       } else {
-        DOM.modeInfoBadge.textContent = '🛠️ MANUAL MODE';
+        DOM.modeInfoBadge.textContent = '🛠️ MANUAL MODE (M100)';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--manual';
       }
     }
     if (DOM.modeInfoDesc) {
       if (isNone) {
-        DOM.modeInfoDesc.textContent = 'โหมดเริ่มต้น (NONE) | สลับเป็นโหมด AUTO หรือ MANUAL เพื่อเริ่มใช้งาน';
+        DOM.modeInfoDesc.textContent = 'โหมด NONE (M9=ON) | ไฟสีเหลืองติดค้าง (สลับเป็น AUTO หรือ MANUAL เพื่อเริ่ม)';
       } else if (isAuto) {
         DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับได้เฉพาะอุณหภูมิ';
       } else {
@@ -800,7 +802,7 @@
       if (DOM.onTime) DOM.onTime.value = '';
       if (DOM.offTime) DOM.offTime.value = '';
       if (DOM.scheduleStatusTag) {
-        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE — กรุณาเลือกโหมด AUTO หรือ MANUAL';
+        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE (ไฟเหลืองติดค้าง) — สลับโหมด AUTO หรือ MANUAL เพื่อเริ่ม';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       }
       if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
@@ -873,7 +875,7 @@
         clientId: state.clientId,
         timestamp: Date.now()
       };
-      state.mqttClient.publish(CONFIG.topicControl, JSON.stringify(presencePayload));
+      state.mqttClient.publish(CONFIG.topicSync, JSON.stringify(presencePayload));
     } catch (e) {}
   }
 
@@ -936,7 +938,7 @@
       ...extraData
     };
     try {
-      state.mqttClient.publish(CONFIG.topicControl, JSON.stringify(syncPayload));
+      state.mqttClient.publish(CONFIG.topicSync, JSON.stringify(syncPayload));
     } catch(e) {}
   }
 
@@ -1065,6 +1067,7 @@
         state.mqttClient.subscribe(CONFIG.topicStatus);
         state.mqttClient.subscribe(CONFIG.topicAvailability);
         state.mqttClient.subscribe(CONFIG.topicControl);
+        state.mqttClient.subscribe(CONFIG.topicSync);
 
         startPresenceTimer();
 
@@ -1090,15 +1093,15 @@
             state.esp32Online = true;
             const statusData = JSON.parse(msgStr);
             handleMqttStatus(statusData);
-          } else if (topic === CONFIG.topicControl) {
+          } else if (topic === CONFIG.topicSync || topic === CONFIG.topicControl) {
             try {
-              const controlData = JSON.parse(msgStr);
-              if (controlData && typeof controlData === 'object') {
-                if (controlData.type === 'presence') {
-                  state.activeUsers[controlData.clientId] = Date.now();
+              const syncData = JSON.parse(msgStr);
+              if (syncData && typeof syncData === 'object') {
+                if (syncData.type === 'presence') {
+                  state.activeUsers[syncData.clientId] = Date.now();
                   updateActiveUsersCount();
-                } else if (controlData.type === 'ui_sync') {
-                  handleUiSyncMessage(controlData);
+                } else if (syncData.type === 'ui_sync') {
+                  handleUiSyncMessage(syncData);
                 }
               }
             } catch(e) {}
@@ -1160,7 +1163,7 @@
   }
 
   // Send Direct JSON MQTT Command to HiveMQ (aircon/control)
-  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true, saveBtn = 0) {
+  function sendMqttPayload(power, temp, mode, fan, complete = 0, reset = 0, mqttSend = 0, stopBtn = 0, startBtn = 0, modeAuto = 0, modeManual = 0, includeStopDate = true, saveBtn = 0, modeNone = 0) {
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
@@ -1172,6 +1175,7 @@
     const sv = Number(saveBtn) || 0;
     const sb = Number(stopBtn) || 0;
     const tb = Number(startBtn) || 0;
+    const mn = (state.scheduleMode === 'none' || modeNone) ? 1 : 0;
     const ma = (state.scheduleMode === 'auto' || modeAuto) ? 1 : 0;
     const mm = (state.scheduleMode === 'manual' || modeManual) ? 1 : 0;
 
@@ -1214,6 +1218,7 @@
       save_btn: sv,
       stop_btn: sb,
       start_btn: tb,
+      mode_none: mn,
       mode_auto: ma,
       mode_manual: mm,
       schedule_mode: state.scheduleMode,
@@ -1558,11 +1563,22 @@
         DOM.flowIdle?.classList.add('state-flow__step--active');
         const idleDot = DOM.flowIdle?.querySelector('.state-flow__dot');
 
-        setLight(DOM.lightYellow, DOM.stateYellow, 'amber-blink', 'IDLE', '⚡ กระพริบ 1s: ยังไม่ตั้งเวลา/รีเซท');
-        if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber-blink';
-        if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'Step 1: IDLE (เหลืองกระพริบ 1s)';
-          DOM.currentStateBadge.className = 'state-badge state-badge--amber-blink';
+        if (state.scheduleMode === 'none') {
+          // ในโหมด NONE: ไฟเหลืองติดค้าง (amber-solid)
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'NONE', '🟡 ติดค้าง: โหมด NONE (M9=ON)');
+          if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber';
+          if (DOM.currentStateBadge) {
+            DOM.currentStateBadge.textContent = 'โหมด NONE (เหลืองติดค้าง - M9=ON)';
+            DOM.currentStateBadge.className = 'state-badge state-badge--amber';
+          }
+        } else {
+          // ในโหมด AUTO / MANUAL ที่ยังไม่ได้บันทึกเวลา: ไฟเหลืองกระพริบ 1s (amber-blink)
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-blink', 'IDLE', '⚡ กระพริบ 1s: ยังไม่ตั้งเวลา/รีเซท');
+          if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber-blink';
+          if (DOM.currentStateBadge) {
+            DOM.currentStateBadge.textContent = 'Step 1: IDLE (เหลืองกระพริบ 1s)';
+            DOM.currentStateBadge.className = 'state-badge state-badge--amber-blink';
+          }
         }
         break;
     }

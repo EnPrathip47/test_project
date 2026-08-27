@@ -43,8 +43,7 @@
     reconnectAttempts: 0,
     acOn: false,
     targetTemp: 25,
-    systemState: 'idle', // idle | ready | running | stopped | timeout
-    scheduleMode: 'auto', // 'auto' | 'manual'
+    scheduleMode: 'none', // 'none' | 'auto' | 'manual'
     schedule: {
       enabled: false,
       onDate: '',
@@ -280,15 +279,8 @@
 
     applyScheduleMode(state.scheduleMode);
     
-    // In AUTO Mode: default to READY (Green Blinking) or RUNNING (Green Solid), eliminating Yellow light
+    // Evaluate Real-time State on startup / refresh:
     if (state.scheduleMode === 'auto') {
-      const todayIso = getTodayIso();
-      state.schedule.onDate = todayIso;
-      state.schedule.offDate = todayIso;
-      state.schedule.onTime = '08:00';
-      state.schedule.offTime = '17:00';
-      state.schedule.enabled = true;
-
       const now = new Date();
       const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
       if (start && stop && now >= start && now < stop) {
@@ -296,8 +288,24 @@
       } else {
         updateSystemState('ready');
       }
+    } else if (state.scheduleMode === 'manual' && state.schedule.enabled) {
+      const now = new Date();
+      const onD = state.schedule.onDate || todayIso;
+      const offD = state.schedule.offDate || onD;
+      const { start, stop } = getScheduleRange(onD, state.schedule.onTime, offD, state.schedule.offTime);
+      if (start && stop) {
+        if (now >= start && now < stop) {
+          updateSystemState('running');
+        } else if (now >= stop) {
+          updateSystemState('timeout');
+        } else {
+          updateSystemState('ready');
+        }
+      } else {
+        updateSystemState('ready');
+      }
     } else {
-      updateSystemState('idle');
+      updateSystemState(state.systemState || 'idle');
     }
 
     updateMqttStatusUI();
@@ -459,29 +467,41 @@
 
     DOM.onDate?.addEventListener('change', () => {
       validateDateNotPast(DOM.onDate);
+      state.schedule.onDate = DOM.onDate.value;
+      saveSettings();
       updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
     DOM.offDate?.addEventListener('change', () => {
       validateDateNotPast(DOM.offDate);
+      state.schedule.offDate = DOM.offDate.value;
+      saveSettings();
       updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
     DOM.onTime?.addEventListener('input', () => {
+      state.schedule.onTime = DOM.onTime.value;
+      saveSettings();
       updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
     DOM.onTime?.addEventListener('change', () => {
+      state.schedule.onTime = DOM.onTime.value;
       validateTimeInterval();
+      saveSettings();
       broadcastUiSync('change_input');
     });
 
     DOM.offTime?.addEventListener('input', () => {
+      state.schedule.offTime = DOM.offTime.value;
+      saveSettings();
       updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
     DOM.offTime?.addEventListener('change', () => {
+      state.schedule.offTime = DOM.offTime.value;
       validateTimeInterval();
+      saveSettings();
       broadcastUiSync('change_input');
     });
 
@@ -523,10 +543,6 @@
         if (!isNaN(val)) setTargetTemp(val, true);
       });
     });
-
-    // MQTT Remote Control Events
-    DOM.powerBtnOn?.addEventListener('click', () => setMqttPower(1, true));
-    DOM.powerBtnOff?.addEventListener('click', () => setMqttPower(0, true));
 
     DOM.modeSelect?.addEventListener('change', () => {
       if (state.scheduleMode === 'none') return;
@@ -600,14 +616,24 @@
     updateMqttTempDisplay();
   }
 
+  function updateMqttTempDisplay() {
+    if (!DOM.mqttTempDisplay) return;
+    if (state.scheduleMode === 'none') {
+      DOM.mqttTempDisplay.textContent = '--';
+      return;
+    }
+    const temp = DOM.targetTemp?.value || state.targetTemp;
+    DOM.mqttTempDisplay.textContent = temp ? `${temp}°C` : '--';
+  }
+
   // Validate Target Temperature (Must be between 18°C and 27°C)
   function getValidTargetTemp() {
     const rawVal = parseFloat(DOM.targetTemp?.value);
     if (isNaN(rawVal) || rawVal < 18 || rawVal > 27) {
-      let valid = rawVal < 18 ? 18 : 27;
-      if (isNaN(rawVal)) valid = 25;
-      if (DOM.targetTemp) DOM.targetTemp.value = valid;
-      state.targetTemp = valid;
+      const valid = 25;
+      if (state.scheduleMode !== 'none') {
+        if (DOM.targetTemp) DOM.targetTemp.value = valid;
+      }
       return valid;
     }
     state.targetTemp = rawVal;
@@ -636,17 +662,11 @@
   }
 
   function updateScheduleInputsState() {
-    // In manual mode, editing input fields invalidates previous saved schedule
-    if (state.scheduleMode === 'manual') {
-      state.schedule.enabled = false;
-      if (state.systemState === 'ready' || state.systemState === 'idle') {
-        updateSystemState('idle');
-      } else {
-        updateControlButtons();
-      }
-    } else {
-      updateControlButtons();
+    if (state.schedule.enabled) {
+      // เมื่อ setting time แล้ว ห้ามเปลี่ยนค่าจนกว่าจะกดรีเซท
+      return;
     }
+    updateControlButtons();
   }
 
   // ── Load Settings from localStorage ──
@@ -668,40 +688,74 @@
     if (saved) {
       try {
         const settings = JSON.parse(saved);
+        if (settings.scheduleMode) {
+          state.scheduleMode = settings.scheduleMode;
+        }
         if (settings.targetTemp != null) {
           const temp = parseFloat(settings.targetTemp);
           if (!isNaN(temp) && temp >= 18 && temp <= 27) {
             state.targetTemp = temp;
-            if (DOM.targetTemp) DOM.targetTemp.value = temp;
           }
         }
-        // Load schedule mode preference
-        if (settings.scheduleMode === 'none' || settings.scheduleMode === 'auto' || settings.scheduleMode === 'manual') {
-          state.scheduleMode = settings.scheduleMode;
+        if (settings.acMode != null) state.acMode = Number(settings.acMode);
+        if (settings.acFan != null) state.acFan = Number(settings.acFan);
+        if (settings.acPower != null) state.acPower = Number(settings.acPower);
+        if (settings.acOn != null) state.acOn = Boolean(settings.acOn);
+
+        if (state.scheduleMode === 'manual') {
+          state.schedule.onDate = settings.onDate || '';
+          state.schedule.offDate = settings.offDate || '';
+          state.schedule.onTime = settings.onTime || '';
+          state.schedule.offTime = settings.offTime || '';
+          state.schedule.enabled = Boolean(settings.scheduleEnabled);
+          if (settings.systemState) {
+            state.systemState = settings.systemState;
+          }
+        } else if (state.scheduleMode === 'auto') {
+          const todayIso = getTodayIso();
+          state.schedule.onDate = todayIso;
+          state.schedule.offDate = todayIso;
+          state.schedule.onTime = '08:00';
+          state.schedule.offTime = '17:00';
+          state.schedule.enabled = true;
+          if (settings.systemState) {
+            state.systemState = settings.systemState;
+          }
+        } else {
+          // In NONE mode:
+          state.schedule.enabled = false;
+          state.schedule.onDate = '';
+          state.schedule.offDate = '';
+          state.schedule.onTime = '';
+          state.schedule.offTime = '';
+          state.systemState = 'idle';
         }
       } catch (e) {
         console.warn('Failed to load settings:', e);
       }
     }
-
-    state.schedule.enabled = false;
-    state.schedule.onTime = '';
-    state.schedule.offTime = '';
-    state.schedule.onDate = '';
-    state.schedule.offDate = '';
-    if (DOM.onTime) DOM.onTime.value = '';
-    if (DOM.offTime) DOM.offTime.value = '';
-    if (DOM.onDate) DOM.onDate.value = '';
-    if (DOM.offDate) DOM.offDate.value = '';
-    if (DOM.targetTemp && !DOM.targetTemp.value) DOM.targetTemp.value = state.targetTemp || 25;
   }
 
   function saveSettings() {
-    const settings = {
-      targetTemp: state.targetTemp,
-      scheduleMode: state.scheduleMode,
-    };
-    localStorage.setItem('airCandySettings', JSON.stringify(settings));
+    try {
+      const settings = {
+        targetTemp: state.targetTemp,
+        scheduleMode: state.scheduleMode,
+        scheduleEnabled: state.schedule.enabled,
+        onDate: state.schedule.onDate || DOM.onDate?.value || '',
+        onTime: state.schedule.onTime || DOM.onTime?.value || '',
+        offDate: state.schedule.offDate || DOM.offDate?.value || '',
+        offTime: state.schedule.offTime || DOM.offTime?.value || '',
+        systemState: state.systemState,
+        acOn: state.acOn,
+        acPower: state.acPower,
+        acMode: state.acMode,
+        acFan: state.acFan
+      };
+      localStorage.setItem('airCandySettings', JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Failed to save settings:', e);
+    }
   }
 
   // ============================================================
@@ -795,14 +849,30 @@
     // Disable/enable date & time inputs
     if (isNone) {
       state.schedule.enabled = false;
-      if (DOM.onDate) DOM.onDate.disabled = true;
-      if (DOM.offDate) DOM.offDate.disabled = true;
-      if (DOM.onTime) DOM.onTime.disabled = true;
-      if (DOM.offTime) DOM.offTime.disabled = true;
-      if (DOM.onTime) DOM.onTime.value = '';
-      if (DOM.offTime) DOM.offTime.value = '';
+      state.schedule.onDate = '';
+      state.schedule.offDate = '';
+      state.schedule.onTime = '';
+      state.schedule.offTime = '';
+      state.acOn = false;
+      state.acPower = 0;
+
+      // เคลียร์ค่า input และ display ทั้งหมดให้ว่างเปล่า ไม่มีค่าเดิมค้าง
+      if (DOM.onDate) { DOM.onDate.value = ''; DOM.onDate.disabled = true; }
+      if (DOM.offDate) { DOM.offDate.value = ''; DOM.offDate.disabled = true; }
+      if (DOM.onTime) { DOM.onTime.value = ''; DOM.onTime.disabled = true; }
+      if (DOM.offTime) { DOM.offTime.value = ''; DOM.offTime.disabled = true; }
+      if (DOM.targetTemp) { DOM.targetTemp.value = ''; DOM.targetTemp.disabled = true; DOM.targetTemp.placeholder = '--'; }
+      if (DOM.mqttTempDisplay) DOM.mqttTempDisplay.textContent = '--';
+      if (DOM.mqttLastCmd) DOM.mqttLastCmd.textContent = '--';
+      document.querySelectorAll('.temp-chip').forEach(chip => {
+        chip.classList.remove('temp-chip--active');
+        chip.disabled = true;
+      });
+      if (DOM.powerBtnOn) { DOM.powerBtnOn.classList.remove('mqtt-power-btn--active'); DOM.powerBtnOn.disabled = true; }
+      if (DOM.powerBtnOff) { DOM.powerBtnOff.classList.remove('mqtt-power-btn--active'); DOM.powerBtnOff.disabled = true; }
+
       if (DOM.scheduleStatusTag) {
-        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE (ไฟเหลืองติดค้าง) — สลับโหมด AUTO หรือ MANUAL เพื่อเริ่ม';
+        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE (M9=ON) — ไฟเหลืองติดค้าง (สลับโหมดเพื่อเริ่ม)';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       }
       if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
@@ -814,6 +884,12 @@
       const todayIso = getTodayIso();
       if (DOM.onDate) DOM.onDate.value = todayIso;
       if (DOM.offDate) DOM.offDate.value = todayIso;
+      if (DOM.targetTemp) {
+        DOM.targetTemp.disabled = false;
+        DOM.targetTemp.value = state.targetTemp ? String(state.targetTemp) : '25';
+        DOM.targetTemp.placeholder = '18 - 27';
+      }
+      updateMqttTempDisplay();
 
       state.schedule.onDate = todayIso;
       state.schedule.offDate = todayIso;
@@ -830,31 +906,54 @@
         updateSystemState('ready');
       }
     } else {
-      // In manual mode, reset schedule and clear input fields so they are blank
-      if (DOM.onDate) {
-        DOM.onDate.disabled = false;
-        DOM.onDate.value = '';
-      }
-      if (DOM.offDate) {
-        DOM.offDate.disabled = false;
-        DOM.offDate.value = '';
-      }
-      if (DOM.onTime) {
-        DOM.onTime.disabled = false;
-        DOM.onTime.value = '';
-      }
-      if (DOM.offTime) {
-        DOM.offTime.disabled = false;
-        DOM.offTime.value = '';
-      }
-      state.schedule.onDate = '';
-      state.schedule.offDate = '';
-      state.schedule.onTime = '';
-      state.schedule.offTime = '';
-      state.schedule.enabled = false;
-      state.acOn = false;
-      if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
-        updateSystemState('idle');
+      // In manual mode:
+      if (!state.schedule.enabled) {
+        if (DOM.onDate) {
+          DOM.onDate.disabled = false;
+          DOM.onDate.value = state.schedule.onDate || '';
+        }
+        if (DOM.offDate) {
+          DOM.offDate.disabled = false;
+          DOM.offDate.value = state.schedule.offDate || '';
+        }
+        if (DOM.onTime) {
+          DOM.onTime.disabled = false;
+          DOM.onTime.value = state.schedule.onTime || '';
+        }
+        if (DOM.offTime) {
+          DOM.offTime.disabled = false;
+          DOM.offTime.value = state.schedule.offTime || '';
+        }
+        if (DOM.targetTemp) {
+          DOM.targetTemp.disabled = false;
+          DOM.targetTemp.value = state.targetTemp ? String(state.targetTemp) : '25';
+          DOM.targetTemp.placeholder = '18 - 27';
+        }
+        updateMqttTempDisplay();
+      } else {
+        // If schedule already enabled (setting time แล้ว), restore input values and lock inputs!
+        if (DOM.onDate) {
+          DOM.onDate.value = state.schedule.onDate || '';
+          DOM.onDate.disabled = true;
+        }
+        if (DOM.offDate) {
+          DOM.offDate.value = state.schedule.offDate || '';
+          DOM.offDate.disabled = true;
+        }
+        if (DOM.onTime) {
+          DOM.onTime.value = state.schedule.onTime || '';
+          DOM.onTime.disabled = true;
+        }
+        if (DOM.offTime) {
+          DOM.offTime.value = state.schedule.offTime || '';
+          DOM.offTime.disabled = true;
+        }
+        if (DOM.targetTemp) {
+          DOM.targetTemp.disabled = false;
+          DOM.targetTemp.value = state.targetTemp ? String(state.targetTemp) : '25';
+          DOM.targetTemp.placeholder = '18 - 27';
+        }
+        updateMqttTempDisplay();
       }
     }
 
@@ -945,12 +1044,22 @@
   function handleUiSyncMessage(data) {
     if (!data || data.senderId === state.clientId) return; // Ignore own messages
 
-    // 1. Sync Schedule Mode
-    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
-      applyScheduleMode(data.scheduleMode, false);
+    if (data.type === 'request_sync') {
+      broadcastUiSync('full_sync');
+      return;
     }
 
-    // 2. Sync Date & Time Inputs
+    // 1. Sync Schedule Mode
+    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
+      applyScheduleMode(data.scheduleMode);
+    }
+
+    // 2. Sync Schedule enabled state
+    if (data.schedule) {
+      state.schedule.enabled = Boolean(data.schedule.enabled);
+    }
+
+    // 3. Sync Date & Time Inputs
     if (data.onDate !== undefined && DOM.onDate && document.activeElement !== DOM.onDate) {
       DOM.onDate.value = data.onDate;
       state.schedule.onDate = data.onDate;
@@ -968,7 +1077,7 @@
       state.schedule.offTime = data.offTime;
     }
 
-    // 3. Sync Target Temp, Mode, Fan
+    // 4. Sync Target Temp, Mode, Fan
     if (data.targetTemp !== undefined) {
       const t = parseFloat(data.targetTemp);
       if (!isNaN(t) && t >= 18 && t <= 27) {
@@ -986,10 +1095,13 @@
       if (DOM.fanSelect) DOM.fanSelect.value = state.acFan;
     }
 
-    // 4. Sync System State
+    // 5. Sync System State
     if (data.systemState && data.systemState !== state.systemState) {
       updateSystemState(data.systemState);
     }
+
+    saveSettings();
+    updateControlButtons();
   }
 
   function connectMqttBroker() {
@@ -1067,7 +1179,11 @@
         state.mqttClient.subscribe(CONFIG.topicStatus);
         state.mqttClient.subscribe(CONFIG.topicAvailability);
         state.mqttClient.subscribe(CONFIG.topicControl);
-        state.mqttClient.subscribe(CONFIG.topicSync);
+        state.mqttClient.subscribe(CONFIG.topicSync, () => {
+          try {
+            state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({ type: 'request_sync', senderId: state.clientId }));
+          } catch(e) {}
+        });
 
         startPresenceTimer();
 
@@ -1100,7 +1216,7 @@
                 if (syncData.type === 'presence') {
                   state.activeUsers[syncData.clientId] = Date.now();
                   updateActiveUsersCount();
-                } else if (syncData.type === 'ui_sync') {
+                } else if (syncData.type === 'ui_sync' || syncData.type === 'request_sync') {
                   handleUiSyncMessage(syncData);
                 }
               }
@@ -1315,35 +1431,37 @@
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
 
-    // Actual State from ESP32 (Only sync controls if user hasn't modified them pending send)
-    if (mqttData.power !== undefined && !state.userModifiedPower) {
-      state.acPower = Number(mqttData.power);
-      state.acOn = (state.acPower === 1);
-      setMqttPower(state.acPower, false);
-    }
+    // In NONE mode, keep inputs blank / empty as requested by user
+    if (state.scheduleMode !== 'none') {
+      if (mqttData.power !== undefined && !state.userModifiedPower) {
+        state.acPower = Number(mqttData.power);
+        state.acOn = (state.acPower === 1);
+        updateControlButtons();
+      }
 
-    if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
-      const t = parseFloat(mqttData.temperature);
-      if (!isNaN(t) && t >= 18 && t <= 27) {
-        state.targetTemp = t;
-        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
-          DOM.targetTemp.value = t;
+      if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
+        const t = parseFloat(mqttData.temperature);
+        if (!isNaN(t) && t >= 18 && t <= 27) {
+          state.targetTemp = t;
+          if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
+            DOM.targetTemp.value = t;
+          }
+          updateMqttTempDisplay();
         }
-        updateMqttTempDisplay();
       }
-    }
 
-    if (mqttData.mode !== undefined && !state.userModifiedMode) {
-      state.acMode = Number(mqttData.mode);
-      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
-        DOM.modeSelect.value = state.acMode;
+      if (mqttData.mode !== undefined && !state.userModifiedMode) {
+        state.acMode = Number(mqttData.mode);
+        if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
+          DOM.modeSelect.value = state.acMode;
+        }
       }
-    }
 
-    if (mqttData.fan !== undefined && !state.userModifiedFan) {
-      state.acFan = Number(mqttData.fan);
-      if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
-        DOM.fanSelect.value = state.acFan;
+      if (mqttData.fan !== undefined && !state.userModifiedFan) {
+        state.acFan = Number(mqttData.fan);
+        if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
+          DOM.fanSelect.value = state.acFan;
+        }
       }
     }
 
@@ -1694,7 +1812,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════
-    // โหมด AUTO หรือ MANUAL: ปลดล็อกการใช้งานตามปกติ
+    // โหมด AUTO หรือ MANUAL: ปลดล็อกการใช้งานตามเงื่อนไข
     // ══════════════════════════════════════════════════════════════
     if (DOM.targetTemp) DOM.targetTemp.disabled = false;
     if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
@@ -1710,13 +1828,31 @@
     if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
     if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
 
-    // ปุ่มบันทึกค่า: ในโหมด AUTO จะปิดการใช้งาน (ฟิกซ์เวลา 08:00 - 17:00 แล้ว) ในโหมด MANUAL เปิดให้กด
+    // การล็อกเวลา (Time Inputs Locking):
+    // - โหมด AUTO: ล็อกเสมอ (ฟิกซ์ 08:00 - 17:00)
+    // - โหมด MANUAL: เมื่อ setting time แล้ว (state.schedule.enabled == true) จะล็อกทันทีจนกว่าจะกดรีเซท!
+    const isTimeLocked = isAuto || (isManual && state.schedule.enabled);
+
+    if (DOM.onDate) DOM.onDate.disabled = isTimeLocked;
+    if (DOM.offDate) DOM.offDate.disabled = isTimeLocked;
+    if (DOM.onTime) DOM.onTime.disabled = isTimeLocked;
+    if (DOM.offTime) DOM.offTime.disabled = isTimeLocked;
+
+    // ปุ่มบันทึกค่า: 
+    // - เมื่อ setting time แล้ว หรือโหมด AUTO -> ปิดการใช้งาน
+    // - โหมด MANUAL ที่ยังไม่ setting time -> เปิดให้กด
     if (DOM.btnSave) {
-      DOM.btnSave.disabled = isAuto;
+      DOM.btnSave.disabled = isTimeLocked;
       if (DOM.btnSaveHint) {
-        DOM.btnSaveHint.textContent = isAuto ? 'โหมด AUTO ฟิกซ์เวลาแล้ว' : '';
+        if (isAuto) {
+          DOM.btnSaveHint.textContent = 'โหมด AUTO ฟิกซ์เวลาแล้ว';
+        } else if (state.schedule.enabled) {
+          DOM.btnSaveHint.textContent = 'บันทึกเวลาแล้ว (ล็อกไว้จนกว่าจะกดรีเซท)';
+        } else {
+          DOM.btnSaveHint.textContent = '';
+        }
       }
-      DOM.btnSave.title = isAuto ? 'โหมด AUTO ฟิกซ์เวลา 08:00 - 17:00 อัตโนมัติ (ไม่ต้องกดบันทึกค่า)' : 'บันทึกการตั้งเวลา';
+      DOM.btnSave.title = isTimeLocked ? 'บันทึกเวลาเรียบร้อยแล้ว (กดรีเซทเพื่อเปลี่ยนค่าใหม่)' : 'บันทึกการตั้งเวลา';
     }
 
     // ปุ่มเริ่มทำงาน:
@@ -2196,43 +2332,6 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
-  }
-
-  // ── Settings Persistence ──
-  function saveSettings() {
-    try {
-      const settings = {
-        targetTemp: state.targetTemp,
-        scheduleMode: state.scheduleMode,
-      };
-      localStorage.setItem('airCandySettings', JSON.stringify(settings));
-    } catch(e) {}
-  }
-
-  function loadSettings() {
-    try {
-      const saved = localStorage.getItem('airCandySettings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.targetTemp && !isNaN(parsed.targetTemp)) state.targetTemp = parsed.targetTemp;
-        if (parsed.scheduleMode) state.scheduleMode = parsed.scheduleMode;
-      }
-    } catch(e) {}
-  }
-
-  // ── Initialization ──
-  function init() {
-    setupClock();
-    setupParticles();
-    bindEvents();
-    loadSettings();
-    applyScheduleMode(state.scheduleMode || 'none');
-    updateSystemState('idle');
-
-    // Auto connect to HiveMQ Cloud Broker on startup
-    connectMqttBroker();
-
-    addLog('info', 'ยินดีต้อนรับสู่ AIR CANDY CONTROL — ระบบควบคุมแอร์');
   }
 
   // ── Start ──

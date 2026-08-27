@@ -96,21 +96,21 @@
             <div class="guide-card-item__icon">🤖</div>
             <div class="guide-card-item__content">
               <h4>โหมด AUTO</h4>
-              <p>ทำงานเวลาฟิกซ์ 08:00 - 17:00 น. อัตโนมัติ สั่ง Coil M101=ON บน PLC (ข้าม D500-D504)</p>
+              <p>ทำงานฟิกซ์ 08:00 - 17:00 น. เมื่อถึงเวลาจะยิง IR 10 ครั้งอัตโนมัติ หากเปลี่ยนอุณหภูมิให้กดปุ่ม "ส่งคำสั่งแอร์ (ส่ง MQTT)" เพื่อยิง IR 10 ครั้งปรับค่าใหม่</p>
             </div>
           </div>
           <div class="guide-card-item">
             <div class="guide-card-item__icon">🛠️</div>
             <div class="guide-card-item__content">
               <h4>โหมด MANUAL</h4>
-              <p>กำหนดวันเวลาเปิด-ปิดเอง ต้องกด 💾 <strong>บันทึกค่า</strong> เพื่อส่ง D500-D504 + M42=ON</p>
+              <p>ตั้งเวลา & อุณหภูมิเสร็จแล้ว ให้กด 📡 <strong>ส่งคำสั่งแอร์</strong> และกด 💾 <strong>บันทึกค่า</strong> แล้วกด 🚀 <strong>เริ่มทำงาน</strong> เมื่อถึงเวลา IR จึงจะยิง 10 ครั้ง</p>
             </div>
           </div>
           <div class="guide-card-item">
             <div class="guide-card-item__icon">⚡</div>
             <div class="guide-card-item__content">
-              <h4>โหมด NONE</h4>
-              <p>สั่งงานตรงเปิด/ปิด ปรับอุณหภูมิ 18-27°C และพัดลม ส่ง D10-D14 + M8=ON ได้ทันที</p>
+              <h4>โหมด NONE (M9)</h4>
+              <p>ไฟสีเหลืองติดค้าง (M9=ON) ล็อกการทำงานทุกปุ่ม ป้องกันการกดผิดพลาด สลับเป็น AUTO หรือ MANUAL เพื่อเริ่ม</p>
             </div>
           </div>
           <div class="guide-card-item">
@@ -189,18 +189,18 @@
           <span class="section__icon">🚦</span>
           สถานะหลอดไฟเตือน 3 สี
         </h2>
-        <span class="state-badge" id="currentStateBadge">IDLE (สภาวะเริ่มต้น)</span>
+        <span class="state-badge" id="currentStateBadge">โหมด NONE (เหลืองติดค้าง - M9=ON)</span>
       </div>
       <div class="indicator-grid">
-        <!-- ไฟเหลือง: Step 1 (IDLE - กระพริบ 1s) -->
+        <!-- ไฟเหลือง: โหมด NONE (ติดค้าง - M9) / Step 1 (IDLE - กระพริบ 1s) -->
         <div class="indicator" id="indicatorYellow">
-          <div class="indicator__light indicator__light--amber-blink" id="lightYellow">
+          <div class="indicator__light indicator__light--amber-solid" id="lightYellow">
             <div class="indicator__glow"></div>
           </div>
           <div class="indicator__info">
-            <span class="indicator__label">ไฟเหลือง (Step 1: IDLE)</span>
-            <span class="indicator__state" id="stateYellow">IDLE</span>
-            <span class="indicator__desc" id="descYellow">⚡ กระพริบ 1s: รอตั้งเวลา/รีเซท | ❌ ดับ: ตั้งเวลาแล้ว</span>
+            <span class="indicator__label">ไฟเหลือง (โหมด NONE / IDLE)</span>
+            <span class="indicator__state" id="stateYellow">NONE</span>
+            <span class="indicator__desc" id="descYellow">🟡 ติดค้าง: โหมด NONE (M9=ON) | ⚡ กระพริบ 1s: รอตั้งเวลา</span>
           </div>
         </div>
         <!-- ไฟเขียว: Step 2 (READY - กระพริบ 1s) / Step 3 (RUNNING - ติดค้าง) -->
@@ -540,23 +540,25 @@
         <div class="guide-modal__steps">
           <div class="guide-step">
             <span class="guide-step__num">1</span>
-            <div><strong>ระบบ HiveMQ MQTT:</strong> สื่อสารตรงผ่าน HiveMQ Cloud WSS (Port 8884) ระหว่าง Web และ ESP32-S3</div>
+            <div><strong>โหมด NONE (M9=ON):</strong> ไฟสีเหลืองติดค้าง ล็อกปุ่มทั้งหมด ยกเว้นปุ่มสลับโหมด เพื่อความปลอดภัย</div>
           </div>
           <div class="guide-step">
             <span class="guide-step__num">2</span>
-            <div><strong>ตั้งเวลา & อุณหภูมิ:</strong> กรอกเวลาเปิด-ปิด และอุณหภูมิ (ห้ามต่ำกว่า 15°C)</div>
+            <div><strong>โหมด AUTO (เวลาฟิกซ์ 08:00 - 17:00):</strong> เมื่อถึงเวลาเปิดและตั้งอุณหภูมิไว้แล้ว บอร์ดจะยิง IR 10 ครั้งทันที หากต้องการเปลี่ยนอุณหภูมิระหว่างทำงาน ให้ปรับค่าแล้วกดปุ่ม 📡 "ส่งคำสั่งแอร์ (ส่ง MQTT)" เพื่อยิง IR 10 ครั้งปรับค่าใหม่</div>
           </div>
           <div class="guide-step">
             <span class="guide-step__num">3</span>
-            <div><strong>กดบันทึกค่า:</strong> ต้องกดปุ่ม 💾 บันทึกค่า เพื่อปลดล็อกปุ่มเริ่มทำงาน</div>
+            <div><strong>โหมด MANUAL (ขั้นตอนการทำงาน):</strong><br/>
+              1. ตั้งค่าวัน/เวลา และอุณหภูมิที่ต้องการ<br/>
+              2. กดปุ่ม 📡 <strong>ส่งคำสั่งแอร์ (ส่ง MQTT)</strong> (ส่งค่าเข้า PLC D11)<br/>
+              3. กดปุ่ม 💾 <strong>บันทึกค่า</strong> (ส่ง D500-D504 + M42=ON)<br/>
+              4. กดปุ่ม 🚀 <strong>เริ่มทำงาน</strong> (เข้าสู่สถานะ READY ไฟเขียวกระพริบ)<br/>
+              5. <strong>เมื่อถึงเวลาที่ตั้งไว้:</strong> บอร์ดจะเริ่มทำงานและยิงสัญญาณ IR 10 ครั้งทันที!
+            </div>
           </div>
           <div class="guide-step">
             <span class="guide-step__num">4</span>
-            <div><strong>สภาวะ READY (เขียวกระพริบ 1s):</strong> รอจนกระทั่งถึงเวลาเปิด แอร์จึงทำงาน (เขียวติดค้าง)</div>
-          </div>
-          <div class="guide-step">
-            <span class="guide-step__num">5</span>
-            <div><strong>ไฟแดงล็อกระบบ (RESET):</strong> หากขึ้นไฟแดง ต้องกดปุ่ม 🔄 รีเซท เพื่อเริ่มใหม่เสมอ</div>
+            <div><strong>ครบเวลาทำงาน (TIMEOUT) หรือกดหยุด (STOP):</strong> ไฟแดงขึ้นเตือน ต้องกดปุ่ม 🔄 รีเซท เพื่อวนลูปเริ่มรอบใหม่</div>
           </div>
         </div>
       </div>

@@ -416,9 +416,9 @@
     if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
         updateSystemState('running');
-        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
-        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14 ไปยัง PLC`);
-        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — ส่งคำสั่ง M5=ON และ Modbus D10-D14 เปิดแอร์สำเร็จ`);
+        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์ M5=ON และยิงสัญญาณ IR 10 ครั้ง`);
+        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR 10 ครั้ง (M5=ON)`);
       }
     }
     // When running, reach off time -> timeout (Complete schedule)
@@ -426,7 +426,7 @@
       if (now >= stop) {
         updateSystemState('timeout');
         sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 1); // [ Complete Flag set M500 ]
-        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และเซ็ต Complete Flag M500 ไปยัง PLC`);
+        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และยิง IR 10 ครั้ง ปิดแอร์ (M500)`);
         showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — เซ็ต Complete Flag M500 (กดรีเซทเพื่อเริ่มใหม่)`);
       }
     }
@@ -1287,13 +1287,28 @@
   }
 
   function sendMqttCommandFromUI() {
-    const power = (state.systemState === 'running' || state.acOn) ? 1 : state.acPower;
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
+      return;
+    }
+    const isAuto = (state.scheduleMode === 'auto');
+    const isRunning = (state.systemState === 'running' || state.acOn);
+    const power = (isRunning || isAuto) ? 1 : state.acPower;
     const temp = getValidTargetTemp();
     const mode = state.acMode;
     const fan = state.acFan;
 
     // Send mqtt_send = 1 (Triggers M8 on PLC, stop_btn = 0)
-    sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
+    const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
+    if (success) {
+      if (isRunning || isAuto) {
+        showToast('success', `📡 ส่งคำสั่งอุณหภูมิ ${temp}°C ไปยัง PLC (M8=ON) — ยิง IR 10 ครั้ง`);
+        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (M8=ON) — บอร์ดสั่งยิง IR 10 ครั้ง`);
+      } else {
+        showToast('success', `💾 ส่งค่าอุณหภูมิ ${temp}°C ไปบันทึกใน PLC D11 (M8=ON) สำเร็จ (รอถึงเวลาจึงจะยิง IR 10 ครั้ง)`);
+        addLog('info', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปบันทึกใน PLC (M8=ON) — รอเริ่มทำงานตามเวลา`);
+      }
+    }
   }
 
   // Handle incoming status payload from ESP32 (Actual State Readback)
@@ -1953,17 +1968,17 @@
     // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14
     if (now >= start) {
       state.acOn = true;
-      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & D10-D14)
+      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
       updateSystemState('running');
       broadcastUiSync('start_ac');
-      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON สำเร็จ`);
-      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ส่ง M5=ON ไปยัง PLC)`);
+      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON และยิง IR 10 ครั้ง สำเร็จ`);
+      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ยิง IR 10 ครั้ง)`);
     } else {
       state.acOn = false;
       updateSystemState('ready');
       broadcastUiSync('start_ac');
-      addLog('info', `${modeLabel} กดเริ่มทำงาน — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่ม`);
-      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
+      addLog('info', `${modeLabel} กดเริ่มทำงานแล้ว — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่มจึงจะยิง IR 10 ครั้ง`);
+      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait} จึงจะยิง IR)`);
     }
   }
 

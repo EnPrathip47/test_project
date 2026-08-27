@@ -2231,6 +2231,47 @@
     return div.innerHTML;
   }
 
+  // ── Settings Persistence ──
+  function saveSettings() {
+    try {
+      const settings = {
+        targetTemp: state.targetTemp,
+        scheduleMode: state.scheduleMode,
+      };
+      localStorage.setItem('airCandySettings', JSON.stringify(settings));
+    } catch(e) {}
+  }
+
+  function loadSettings() {
+    try {
+      const saved = localStorage.getItem('airCandySettings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.targetTemp && !isNaN(parsed.targetTemp)) state.targetTemp = parsed.targetTemp;
+        if (parsed.scheduleMode) state.scheduleMode = parsed.scheduleMode;
+      }
+    } catch(e) {}
+  }
+
+  // ── Initialization ──
+  function init() {
+    setupClock();
+    setupParticles();
+    bindEvents();
+    loadSettings();
+    applyScheduleMode(state.scheduleMode || 'none');
+    updateSystemState('idle');
+
+    // Auto connect to HiveMQ Cloud Broker on startup
+    connectMqttBroker();
+
+    addLog('info', 'ยินดีต้อนรับสู่ AIR CANDY CONTROL — ระบบควบคุมแอร์');
+  }
+
   // ── Start ──
-  document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();

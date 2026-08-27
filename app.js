@@ -1913,33 +1913,6 @@
     broadcastUiSync('reset_system');
     addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (สั่งงานตรงได้ทันที)');
     showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
-  }    if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-        state.schedule.enabled = false;
-        return;
-      }
-    }
-
-    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
-    state.schedule.onDate = onDateVal;
-    state.schedule.onTime = onTimeVal;
-    state.schedule.offDate = offDateVal;
-    state.schedule.offTime = offTimeVal;
-    state.schedule.enabled = true;
-    saveSettings();
-
-    // ในโหมด MANUAL: ส่งค่า Modbus (D500-D504 + M100=ON + M42=ON) เมื่อกดปุ่มบันทึกค่า
-    if (!isAutoMode) {
-      sendMqttPayload(0, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, 0, 1, true, 1);
-    }
-
-    // บันทึกค่าสำเร็จ → ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
-    state.acOn = false;
-    updateSystemState('ready');
-    const isFutureDate = (onIso > todayIso);
-    const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
-    addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
-    showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
   }
 
   function startAC() {

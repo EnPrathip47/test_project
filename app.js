@@ -62,6 +62,8 @@
     plcOnline: false,
     mqttOnline: false,
     lastCommand: '',
+    irTransmitting: false,
+    irTimer: null,
 
     // User Pending Modifications (Prevent 5s periodic background status overwrite)
     userModifiedPower: false,
@@ -578,6 +580,10 @@
       showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
       return;
     }
+    if (state.irTransmitting) {
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนเปลี่ยนอุณหภูมิ');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
       return;
@@ -589,6 +595,10 @@
 
   function setTargetTemp(val, isUserAction = false) {
     if (state.scheduleMode === 'none') return;
+    if (state.irTransmitting) {
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนเปลี่ยนอุณหภูมิ');
+      return;
+    }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       showToast('warning', 'ระบบอยู่ในสถานะ Timeout (ล็อกอยู่) — สามารถกดได้เฉพาะปุ่ม "รีเซท" เท่านั้น');
       return;
@@ -608,12 +618,7 @@
     if (isUserAction) {
       state.userModifiedTemp = true;
       broadcastUiSync('change_control');
-      if (state.connected) {
-        const isAuto = (state.scheduleMode === 'auto');
-        const isRunning = (state.systemState === 'running' || state.acOn);
-        const power = (isRunning || isAuto) ? 1 : state.acPower;
-        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
-      }
+      showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว — กรุณากดปุ่ม "ส่งคำสั่งรีโมท (SEND MQTT)" เพื่อยิงสัญญาณ IR`);
     }
   }
 
@@ -764,10 +769,16 @@
   // ============================================================
 
   function setScheduleMode(mode) {
-    if (state.systemState === 'running' || state.systemState === 'stopped' || state.systemState === 'timeout') {
-      showToast('warning', 'ไม่สามารถเปลี่ยนโหมดได้ขณะทำงานหรือล็อกอยู่ — กดรีเซทก่อน');
+    // เมื่อเลือกโหมด AUTO หรือ MANUAL แล้ว จะไม่สามารถเปลี่ยนโหมดได้จนกว่าจะกดปุ่ม "รีเซท" เพื่อกลับไปโหมด NONE
+    if (state.scheduleMode !== 'none' && mode !== state.scheduleMode) {
+      showToast('warning', '🔒 ล็อคโหมดการทำงานแล้ว — ต้องกดปุ่ม "รีเซท" เพื่อกลับไปโหมด NONE ก่อนเลือกโหมดใหม่');
+      addLog('warning', `[Mode] ไม่สามารถสลับเป็นโหมด ${mode.toUpperCase()} ได้ — ต้องกดปุ่มรีเซทเพื่อกลับไปโหมด NONE ก่อน`);
       return;
     }
+    if (state.scheduleMode === mode) {
+      return;
+    }
+
     state.scheduleMode = mode;
     applyScheduleMode(mode);
     saveSettings();
@@ -777,18 +788,18 @@
     const modeAutoFlag = (mode === 'auto') ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
 
-    // Send mode flag (M9 for NONE, M101 for AUTO, M100 for MANUAL) immediately to PLC via MQTT
+    // Send mode flag immediately to PLC via MQTT
     sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
 
     if (mode === 'none') {
-      showToast('info', '⚡ โหมด NONE — สลับเป็นโหมด NONE (ไฟเหลืองติดค้าง)');
-      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไฟเหลืองติดค้าง)');
+      showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
     } else if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO (เวลาฟิกซ์ 08:00 - 17:00)');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE');
+      showToast('info', '🔄 เลือกโหมด AUTO สำเร็จ (เวลาฟิกซ์ 08:00 - 17:00) — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+      addLog('info', '[Mode] เลือกโหมด AUTO (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
     } else if (mode === 'manual') {
-      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL (ตั้งเวลาแล้วกด "บันทึกค่า")');
-      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE');
+      showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+      addLog('info', '[Mode] เลือกโหมด MANUAL (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
     }
   }
 
@@ -798,15 +809,18 @@
     const isManual = (mode === 'manual');
     const toggle = DOM.modeToggleBar?.querySelector('.mode-toggle');
 
-    // Toggle button active states
+    // Toggle button active states and locked tooltip titles
     if (DOM.modeNoneBtn) {
       DOM.modeNoneBtn.classList.toggle('mode-toggle__btn--active', isNone);
+      DOM.modeNoneBtn.title = isNone ? 'โหมด NONE: ไม่ตั้งเวลา' : 'ต้องกดปุ่ม "รีเซท" เพื่อกลับไปโหมด NONE';
     }
     if (DOM.modeAutoBtn) {
       DOM.modeAutoBtn.classList.toggle('mode-toggle__btn--active', isAuto);
+      DOM.modeAutoBtn.title = isAuto ? 'โหมด AUTO กำลังทำงาน' : (isNone ? 'AUTO: ทำงานทุกวัน 08:00-17:00' : 'ล็อคโหมดแล้ว — กดรีเซทเพื่อกลับไปโหมด NONE ก่อน');
     }
     if (DOM.modeManualBtn) {
       DOM.modeManualBtn.classList.toggle('mode-toggle__btn--active', isManual);
+      DOM.modeManualBtn.title = isManual ? 'โหมด MANUAL กำลังทำงาน' : (isNone ? 'MANUAL: ปรับตั้งเวลาอิสระ' : 'ล็อคโหมดแล้ว — กดรีเซทเพื่อกลับไปโหมด NONE ก่อน');
     }
 
     // Slider animation
@@ -1476,9 +1490,39 @@
     return errors;
   }
 
+  function startIrTransmissionLock(durationMs = 5500) {
+    state.irTransmitting = true;
+    updateTempControlButtonsLock();
+
+    if (state.irTimer) clearTimeout(state.irTimer);
+    state.irTimer = setTimeout(() => {
+      state.irTransmitting = false;
+      state.irTimer = null;
+      updateTempControlButtonsLock();
+      showToast('info', '✅ ยิงสัญญาณ IR ครบ 10 รอบแล้ว — สามารถปรับอุณหภูมิใหม่ได้');
+    }, durationMs);
+  }
+
+  function updateTempControlButtonsLock() {
+    const isLocked = (state.scheduleMode === 'none' || state.irTransmitting || state.systemState === 'stopped' || state.systemState === 'timeout');
+
+    if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = isLocked;
+    if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = isLocked;
+    if (DOM.targetTemp) DOM.targetTemp.disabled = isLocked;
+    if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = isLocked;
+
+    document.querySelectorAll('.temp-chip').forEach(chip => {
+      chip.disabled = isLocked;
+    });
+  }
+
   function sendMqttCommandFromUI() {
     if (state.scheduleMode === 'none') {
       showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
+      return;
+    }
+    if (state.irTransmitting) {
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนส่งคำสั่งใหม่');
       return;
     }
     const isAuto = (state.scheduleMode === 'auto');
@@ -1491,9 +1535,10 @@
     // Send mqtt_send = 1 (Triggers M8 on PLC, stop_btn = 0)
     const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
     if (success) {
+      startIrTransmissionLock(5500);
       if (isRunning || isAuto) {
-        showToast('success', `📡 ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ`);
-        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C`);
+        showToast('success', `📡 ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
       } else {
         showToast('success', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (รอเริ่มทำงานตามเวลา)`);
         addLog('info', `[MQTT] บันทึกค่าอุณหภูมิ ${temp}°C — รอเริ่มทำงานตามเวลา`);
@@ -2274,7 +2319,12 @@
     // เมื่อกดรีเซท ให้สลับเด้งกลับสู่โหมด NONE MODE ทันที (ทั้งจาก AUTO และ MANUAL)
     state.scheduleMode = 'none';
 
-    // ปลดล็อกสถานะระบบกลับสู่ idle
+    // ปลดล็อคสถานะระบบและ IR timer
+    if (state.irTimer) {
+      clearTimeout(state.irTimer);
+      state.irTimer = null;
+    }
+    state.irTransmitting = false;
     state.systemState = 'idle';
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)

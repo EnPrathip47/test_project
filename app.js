@@ -510,10 +510,16 @@
 
     DOM.targetTemp?.addEventListener('change', () => {
       state.userModifiedTemp = true;
-      getValidTargetTemp();
+      const validVal = getValidTargetTemp();
       updateMqttTempDisplay();
       saveSettings();
       broadcastUiSync('change_control');
+      if (state.connected) {
+        const isAuto = (state.scheduleMode === 'auto');
+        const isRunning = (state.systemState === 'running' || state.acOn);
+        const power = (isRunning || isAuto) ? 1 : state.acPower;
+        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
+      }
     });
     DOM.targetTemp?.addEventListener('input', () => {
       state.userModifiedTemp = true;
@@ -590,9 +596,6 @@
     const validVal = Math.min(27, Math.max(18, val));
     if (DOM.targetTemp) DOM.targetTemp.value = validVal;
     state.targetTemp = validVal;
-    if (isUserAction) {
-      state.userModifiedTemp = true;
-    }
     
     document.querySelectorAll('.temp-chip').forEach((chip) => {
       const chipVal = parseFloat(chip.getAttribute('data-temp'));
@@ -601,6 +604,17 @@
 
     saveSettings();
     updateMqttTempDisplay();
+
+    if (isUserAction) {
+      state.userModifiedTemp = true;
+      broadcastUiSync('change_control');
+      if (state.connected) {
+        const isAuto = (state.scheduleMode === 'auto');
+        const isRunning = (state.systemState === 'running' || state.acOn);
+        const power = (isRunning || isAuto) ? 1 : state.acPower;
+        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
+      }
+    }
   }
 
   function updateMqttTempDisplay() {
@@ -1056,55 +1070,108 @@
       return;
     }
 
-    // 1. Sync Schedule Mode
-    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
-      applyScheduleMode(data.scheduleMode);
+    // Reset user pending modification flags when synced from another user
+    state.userModifiedPower = false;
+    state.userModifiedMode = false;
+    state.userModifiedFan = false;
+    state.userModifiedTemp = false;
+
+    // Handle Reset action explicitly
+    if (data.action === 'reset_system') {
+      state.acOn = false;
+      state.schedule.enabled = false;
+      state.schedule.onTime = '';
+      state.schedule.offTime = '';
+      state.schedule.onDate = '';
+      state.schedule.offDate = '';
+
+      if (DOM.onTime) DOM.onTime.value = '';
+      if (DOM.offTime) DOM.offTime.value = '';
+      if (DOM.onDate) DOM.onDate.value = '';
+      if (DOM.offDate) DOM.offDate.value = '';
+
+      state.scheduleMode = 'none';
+      state.systemState = 'idle';
+      applyScheduleMode('none');
+      saveSettings();
+      showToast('info', '👥 ผู้ใช้อื่นได้ทำการกด "รีเซทระบบ"');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดรีเซทระบบ -> สลับเข้าสู่ NONE MODE');
+      return;
     }
 
-    // 2. Sync Schedule enabled state
+    // 1. Update Schedule Enabled State FIRST
     if (data.schedule) {
       state.schedule.enabled = Boolean(data.schedule.enabled);
     }
 
-    // 3. Sync Date & Time Inputs
-    if (data.onDate !== undefined && DOM.onDate && document.activeElement !== DOM.onDate) {
-      DOM.onDate.value = data.onDate;
+    // 2. Update Date & Time Inputs
+    if (data.onDate !== undefined) {
       state.schedule.onDate = data.onDate;
+      if (DOM.onDate && document.activeElement !== DOM.onDate) DOM.onDate.value = data.onDate;
     }
-    if (data.offDate !== undefined && DOM.offDate && document.activeElement !== DOM.offDate) {
-      DOM.offDate.value = data.offDate;
+    if (data.offDate !== undefined) {
       state.schedule.offDate = data.offDate;
+      if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = data.offDate;
     }
-    if (data.onTime !== undefined && DOM.onTime && document.activeElement !== DOM.onTime) {
-      DOM.onTime.value = data.onTime;
+    if (data.onTime !== undefined) {
       state.schedule.onTime = data.onTime;
+      if (DOM.onTime && document.activeElement !== DOM.onTime) DOM.onTime.value = data.onTime;
     }
-    if (data.offTime !== undefined && DOM.offTime && document.activeElement !== DOM.offTime) {
-      DOM.offTime.value = data.offTime;
+    if (data.offTime !== undefined) {
       state.schedule.offTime = data.offTime;
+      if (DOM.offTime && document.activeElement !== DOM.offTime) DOM.offTime.value = data.offTime;
     }
 
-    // 4. Sync Target Temp, Mode, Fan
+    // 3. Update Schedule Mode
+    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
+      state.scheduleMode = data.scheduleMode;
+      applyScheduleMode(data.scheduleMode);
+      if (data.action === 'change_mode') {
+        const modeText = data.scheduleMode.toUpperCase();
+        showToast('info', `👥 ผู้ใช้อื่นสลับระบบเป็นโหมด ${modeText}`);
+        addLog('info', `[Sync] ผู้ใช้อื่นสลับระบบเป็นโหมด ${modeText}`);
+      }
+    } else {
+      applyScheduleMode(state.scheduleMode);
+    }
+
+    // 4. Update Target Temp, Mode, Fan
     if (data.targetTemp !== undefined) {
       const t = parseFloat(data.targetTemp);
       if (!isNaN(t) && t >= 18 && t <= 27) {
         state.targetTemp = t;
-        if (DOM.targetTemp) DOM.targetTemp.value = t;
+        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) DOM.targetTemp.value = t;
         updateMqttTempDisplay();
+        document.querySelectorAll('.temp-chip').forEach((chip) => {
+          const chipVal = parseFloat(chip.getAttribute('data-temp'));
+          chip.classList.toggle('temp-chip--active', chipVal === t);
+        });
       }
     }
     if (data.acMode !== undefined) {
       state.acMode = parseInt(data.acMode, 10);
-      if (DOM.modeSelect) DOM.modeSelect.value = state.acMode;
+      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) DOM.modeSelect.value = state.acMode;
     }
     if (data.acFan !== undefined) {
       state.acFan = parseInt(data.acFan, 10);
-      if (DOM.fanSelect) DOM.fanSelect.value = state.acFan;
+      if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) DOM.fanSelect.value = state.acFan;
     }
 
-    // 5. Sync System State
+    // 5. Update System State
     if (data.systemState && data.systemState !== state.systemState) {
       updateSystemState(data.systemState);
+    }
+
+    // Toast notifications for user actions
+    if (data.action === 'save_schedule') {
+      showToast('success', '👥 ผู้ใช้อื่นได้บันทึกเวลาล่วงหน้าแล้ว');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดบันทึกเวลาล่วงหน้า');
+    } else if (data.action === 'start_ac') {
+      showToast('success', '👥 ผู้ใช้อื่นกดเริ่มทำงาน (START)');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดเริ่มทำงานแอร์ (START)');
+    } else if (data.action === 'stop_ac') {
+      showToast('warning', '👥 ผู้ใช้อื่นกดหยุดทำงาน (STOP)');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดหยุดทำงานแอร์ (STOP)');
     }
 
     saveSettings();

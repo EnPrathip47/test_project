@@ -425,22 +425,22 @@
       }
     }
 
-    // Case 1: เมื่อถึงเวลาเริ่มทำงาน (START TIME) -> สั่งเปิดแอร์และยิง IR 10 ครั้ง
+    // Case 1: เมื่อถึงเวลาเริ่มทำงาน (START TIME) -> สั่งเปิดเครื่องปรับอากาศและยิง IR 10 ครั้ง
     if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
         updateSystemState('running');
         sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
-        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์และยิงสัญญาณ IR`);
-        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR`);
+        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+        showToast('success', `ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR`);
       }
     }
-    // Case 3: เมื่อครบเวลาทำงาน (TIMEOUT / COMPLETE) -> สั่งปิดแอร์และยิง IR 10 ครั้ง
+    // Case 3: เมื่อครบเวลาทำงาน (TIMEOUT / COMPLETE) -> สั่งปิดเครื่องปรับอากาศและยิง IR 10 ครั้ง
     else if (state.systemState === 'running') {
       if (now >= stop) {
         updateSystemState('timeout');
         sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 1); // [ Complete Flag set M500 ]
-        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และยิงสัญญาณ IR`);
-        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ส่งคำสั่งปิดแอร์และยิงสัญญาณ IR`);
+        addLog('warning', `[Schedule] ครบเวลาเปิดเครื่องปรับอากาศ (${offTimeVal}) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
       }
     }
   }
@@ -636,9 +636,15 @@
   function getValidTargetTemp() {
     const rawVal = parseFloat(DOM.targetTemp?.value);
     if (isNaN(rawVal) || rawVal < 18 || rawVal > 27) {
-      const valid = 25;
+      const valid = 24; // หากผู้ใช้ลืมตั้งอุณหภูมิ ให้เซทเป็น 24°C สำรองไว้ก่อน
+      state.targetTemp = valid;
       if (state.scheduleMode !== 'none') {
         if (DOM.targetTemp) DOM.targetTemp.value = valid;
+        document.querySelectorAll('.temp-chip').forEach((chip) => {
+          const chipVal = parseFloat(chip.getAttribute('data-temp'));
+          chip.classList.toggle('temp-chip--active', chipVal === valid);
+        });
+        updateMqttTempDisplay();
       }
       return valid;
     }
@@ -660,7 +666,7 @@
     if (start && stop) {
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
-        showToast('warning', 'เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('warning', 'เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         return false;
       }
     }
@@ -901,7 +907,7 @@
       if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
       if (DOM.targetTemp) {
         DOM.targetTemp.disabled = false;
-        DOM.targetTemp.value = state.targetTemp ? String(state.targetTemp) : '25';
+        DOM.targetTemp.value = state.targetTemp ? String(state.targetTemp) : '24';
         DOM.targetTemp.placeholder = '18 - 27';
       }
       updateMqttTempDisplay();
@@ -1182,10 +1188,10 @@
       addLog('info', '[Sync] ผู้ใช้อื่นกดบันทึกเวลาล่วงหน้า');
     } else if (data.action === 'start_ac') {
       showToast('success', '👥 ผู้ใช้อื่นกดเริ่มทำงาน (START)');
-      addLog('info', '[Sync] ผู้ใช้อื่นกดเริ่มทำงานแอร์ (START)');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดเริ่มทำงานเครื่องปรับอากาศ (START)');
     } else if (data.action === 'stop_ac') {
       showToast('warning', '👥 ผู้ใช้อื่นกดหยุดทำงาน (STOP)');
-      addLog('info', '[Sync] ผู้ใช้อื่นกดหยุดทำงานแอร์ (STOP)');
+      addLog('info', '[Sync] ผู้ใช้อื่นกดหยุดทำงานเครื่องปรับอากาศ (STOP)');
     }
 
     saveSettings();
@@ -1516,6 +1522,31 @@
     });
   }
 
+  function isCurrentlyInWorkingWindow() {
+    if (state.scheduleMode === 'none') return false;
+
+    let onTimeVal = state.schedule.onTime || DOM.onTime?.value;
+    let offTimeVal = state.schedule.offTime || DOM.offTime?.value;
+    let onDateVal = state.schedule.onDate || DOM.onDate?.value;
+    let offDateVal = state.schedule.offDate || DOM.offDate?.value;
+
+    if (state.scheduleMode === 'auto') {
+      onTimeVal = '08:00';
+      offTimeVal = '17:00';
+      const todayIso = getTodayIso();
+      onDateVal = todayIso;
+      offDateVal = todayIso;
+    }
+
+    if (!onTimeVal || !offTimeVal) return false;
+
+    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+    if (!start || !stop) return false;
+
+    const now = new Date();
+    return (now >= start && now < stop);
+  }
+
   function sendMqttCommandFromUI() {
     if (state.scheduleMode === 'none') {
       showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
@@ -1525,23 +1556,28 @@
       showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนส่งคำสั่งใหม่');
       return;
     }
-    const isAuto = (state.scheduleMode === 'auto');
-    const isRunning = (state.systemState === 'running' || state.acOn);
-    const power = (isRunning || isAuto) ? 1 : state.acPower;
+
+    const inWorkingWindow = isCurrentlyInWorkingWindow();
+    const isRunning = (state.systemState === 'running' || state.acOn) && inWorkingWindow;
     const temp = getValidTargetTemp();
     const mode = state.acMode;
     const fan = state.acFan;
 
-    // Send mqtt_send = 1 (Triggers M8 on PLC, stop_btn = 0)
-    const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
-    if (success) {
-      startIrTransmissionLock(5500);
-      if (isRunning || isAuto) {
-        showToast('success', `📡 ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
-      } else {
-        showToast('success', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (รอเริ่มทำงานตามเวลา)`);
-        addLog('info', `[MQTT] บันทึกค่าอุณหภูมิ ${temp}°C — รอเริ่มทำงานตามเวลา`);
+    if (isRunning) {
+      // อยู่ในช่วงเวลาทำงานและเครื่องปรับอากาศกำลังทำงาน -> ส่ง mqtt_send = 1 เพื่อยิง IR 10 รอบเปลี่ยนอุณหภูมิเครื่องปรับอากาศจริง
+      const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
+      if (success) {
+        startIrTransmissionLock(5500);
+        showToast('success', `📡 อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+        addLog('success', `[MQTT] อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
+      }
+    } else {
+      // ไม่ได้อยู่ในช่วงเวลาทำงาน (ก่อน 08:00/หลัง 17:00 หรือยังไม่ถึงเวลาเริ่ม) -> ห้ามยิง IR (mqtt_send = 0)
+      const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 0, 0);
+      if (success) {
+        const timeHint = (state.scheduleMode === 'auto') ? '08:00 - 17:00' : 'ตามเวลาที่ตั้งไว้';
+        showToast('info', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (ยังไม่ถึงช่วงเวลาทำงาน ${timeHint} — ห้ามยิง IR)`);
+        addLog('info', `[MQTT] บันทึกอุณหภูมิ ${temp}°C — ยังไม่ถึงช่วงเวลาทำงาน (ห้ามยิง IR)`);
       }
     }
   }
@@ -1784,7 +1820,7 @@
 
       case 'running':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ');
-        setLight(DOM.lightGreen, DOM.stateGreen, 'green-solid', 'RUNNING', '🟢 ติดค้าง: แอร์กำลังทำงาน');
+        setLight(DOM.lightGreen, DOM.stateGreen, 'green-solid', 'RUNNING', '🟢 ติดค้าง: เครื่องปรับอากาศกำลังทำงาน');
         DOM.flowRunning?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
           DOM.currentStateBadge.textContent = 'Step 3: RUNNING (เขียวติดค้าง)';
@@ -1950,7 +1986,7 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
-      // เปิดให้ปรับอุณหภูมิและส่งคำสั่งแอร์ได้
+      // เปิดให้ปรับอุณหภูมิและส่งคำสั่งเครื่องปรับอากาศได้
       if (DOM.targetTemp) DOM.targetTemp.disabled = false;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
@@ -2047,7 +2083,7 @@
     }
 
     // ขั้นที่ 4: ปุ่มหยุดทำงาน (btnStop)
-    // - เมื่อแอร์ถึงเวลาทำงานที่ตั้งไว้ (state.systemState === 'running'): ถึงจะสามารถกดปุ่มหยุดการทำงานได้!
+    // - เมื่อเครื่องปรับอากาศถึงเวลาทำงานที่ตั้งไว้ (state.systemState === 'running'): ถึงจะสามารถกดปุ่มหยุดการทำงานได้!
     // - นอกนั้น: ล็อก (disabled = true)
     if (DOM.btnStop) {
       DOM.btnStop.disabled = (state.systemState !== 'running');
@@ -2121,14 +2157,14 @@
     const targetTemp = getValidTargetTemp();
 
     if (!onTimeVal || !offTimeVal) {
-      showToast('error', 'กรุณากำหนดเวลาเปิดและเวลาปิดแอร์');
+      showToast('error', 'กรุณากำหนดเวลาเปิดและเวลาปิดเครื่องปรับอากาศ');
       return;
     }
 
     const onIso = parseThaiDateToIso(onDateVal);
     const offIso = parseThaiDateToIso(offDateVal);
     if (offIso < onIso) {
-      showToast('error', 'วันที่ปิดแอร์ต้องไม่เกิดขึ้นก่อนวันที่เปิดแอร์');
+      showToast('error', 'วันที่ปิดเครื่องปรับอากาศต้องไม่เกิดขึ้นก่อนวันที่เปิดเครื่องปรับอากาศ');
       return;
     }
 
@@ -2144,14 +2180,14 @@
     if (!isAutoMode) {
       // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
       if (start.getTime() < now.getTime() - 10000) {
-        showToast('error', `ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
 
       // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
       if (stop.getTime() <= now.getTime()) {
-        showToast('error', `ห้ามตั้งเวลาปิดแอร์ย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        showToast('error', `ห้ามตั้งเวลาปิดเครื่องปรับอากาศย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
@@ -2159,7 +2195,7 @@
       // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;
       }
@@ -2229,7 +2265,7 @@
     const onIso = parseThaiDateToIso(finalOnDate);
     const offIso = parseThaiDateToIso(finalOffDate);
     if (offIso < onIso) {
-      showToast('error', 'วันที่ปิดแอร์ต้องไม่เกิดขึ้นก่อนวันที่เปิดแอร์');
+      showToast('error', 'วันที่ปิดเครื่องปรับอากาศต้องไม่เกิดขึ้นก่อนวันที่เปิดเครื่องปรับอากาศ');
       return;
     }
 
@@ -2245,14 +2281,14 @@
     if (!isAutoMode) {
       // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
       if (start.getTime() < now.getTime() - 10000) {
-        showToast('error', `ห้ามตั้งเวลาเปิดแอร์ย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
 
       // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
       if (stop.getTime() <= now.getTime()) {
-        showToast('error', `ห้ามตั้งเวลาปิดแอร์ย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        showToast('error', `ห้ามตั้งเวลาปิดเครื่องปรับอากาศย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
@@ -2260,7 +2296,7 @@
       // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดแอร์ต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;
       }
@@ -2276,14 +2312,15 @@
     const isFutureDate = (onIso > todayIso);
     const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
 
-    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดแอร์ M5=ON และ Modbus D10-D14
+    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดเครื่องปรับอากาศ M5=ON และ Modbus D10-D14
     if (now >= start) {
       state.acOn = true;
       sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+      startIrTransmissionLock(5500);
       updateSystemState('running');
       broadcastUiSync('start_ac');
-      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์สำเร็จ`);
-      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C`);
+      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
+      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${onTimeVal}-${offTimeVal})`);
     } else {
       state.acOn = false;
       updateSystemState('ready');
@@ -2295,12 +2332,17 @@
 
   function stopAC() {
     if (state.scheduleMode === 'none') return;
+    if (state.irTransmitting) {
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อน');
+      return;
+    }
     state.acOn = false;
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON & IR 10x OFF)
+    startIrTransmissionLock(5500);
     updateSystemState('stopped');
     broadcastUiSync('stop_ac');
-    addLog('warning', 'กดหยุดการทำงาน — สั่งปิดแอร์และยิงสัญญาณ IR 1 รอบ (10 ครั้ง) (ไฟแดงติดค้าง)');
-    showToast('warning', 'หยุดทำงานแล้ว — ยิง IR ปิดแอร์ 1 รอบ (10 ครั้ง) (ไฟแดงติดค้าง)');
+    addLog('warning', 'กดหยุดการทำงาน — สั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR (10 ครั้ง)');
+    showToast('warning', 'หยุดทำงานแล้ว — ยิง IR ปิดเครื่องปรับอากาศ (10 ครั้ง)');
   }
 
   function resetSystem() {

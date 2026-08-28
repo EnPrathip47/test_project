@@ -263,24 +263,24 @@ body {
 }
 .sensor-card__temp {
   font-family: var(--font-mono);
-  font-size: 1.55rem; font-weight: 700;
-  color: var(--text-primary); line-height: 1; letter-spacing: 1px;
+  font-size: 1.65rem; font-weight: 800;
+  color: var(--text-primary); line-height: 1; letter-spacing: 0.5px;
 }
-.sensor-card__unit { font-size: 0.7rem; color: var(--cyan); font-weight: 500; margin-top: 2px; }
-.sensor-card__label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.sensor-card__unit { font-size: 0.8rem; color: var(--cyan); font-weight: 700; margin-top: 2px; }
+.sensor-card__label { font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; letter-spacing: 0.3px; }
 .sensor-card__location {
-  font-size: 0.72rem; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 1px;
+  font-size: 0.82rem; font-weight: 700; color: #475569;
+  letter-spacing: 0.5px;
 }
 
 /* Temperature color states */
 .sensor-card--cool .sensor-card__progress { stroke: var(--cyan); filter: drop-shadow(0 0 6px var(--cyan-glow)); }
 .sensor-card--warm .sensor-card__progress { stroke: var(--amber); filter: drop-shadow(0 0 6px var(--amber-glow)); }
 .sensor-card--hot .sensor-card__progress { stroke: var(--red); filter: drop-shadow(0 0 6px var(--red-glow)); }
-.sensor-card--cool .sensor-card__temp { color: var(--cyan); }
-.sensor-card--warm .sensor-card__temp { color: var(--amber); }
-.sensor-card--hot .sensor-card__temp { color: var(--red); }
-.sensor-card--offline .sensor-card__temp { color: var(--text-muted); }
+.sensor-card--cool .sensor-card__temp { color: var(--cyan); font-weight: 800; }
+.sensor-card--warm .sensor-card__temp { color: var(--amber); font-weight: 800; }
+.sensor-card--hot .sensor-card__temp { color: var(--red); font-weight: 800; }
+.sensor-card--offline .sensor-card__temp { color: var(--text-muted); font-weight: 800; }
 .sensor-card--offline .sensor-card__progress { stroke: rgba(255,255,255,0.08); filter: none; }
 .sensor-card--offline { opacity: 0.75; }
 

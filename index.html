@@ -27,6 +27,7 @@
           <p class="header__subtitle">วิทยาเขตสุรินทร์ — ระบบควบคุมการทำงานของแอร์</p>
         </div>
       </div>
+      <div class="header__status">
         <div class="mqtt-status-badges">
           <span class="mqtt-status-badge mqtt-status-badge--users" id="activeUsersStatus" title="จำนวนผู้ใช้งานที่กำลังออนไลน์ในขณะนี้ (Real-Time Presence)">
             <span class="mqtt-status-badge__dot mqtt-status-badge__dot--users"></span>
@@ -126,10 +127,10 @@
           <span class="section__icon">🚦</span>
           สถานะหลอดไฟเตือน 3 สี
         </h2>
-        <span class="state-badge" id="currentStateBadge">โหมด NONE (เหลืองติดค้าง - M9=ON)</span>
+        <span class="state-badge" id="currentStateBadge">โหมด NONE (เหลืองติดค้าง)</span>
       </div>
       <div class="indicator-grid">
-        <!-- ไฟเหลือง: โหมด NONE (ติดค้าง - M9) / Step 1 (IDLE - กระพริบ 1s) -->
+        <!-- ไฟเหลือง: โหมด NONE (ติดค้าง) / Step 1 (IDLE - กระพริบ 1s) -->
         <div class="indicator" id="indicatorYellow">
           <div class="indicator__light indicator__light--amber-solid" id="lightYellow">
             <div class="indicator__glow"></div>
@@ -137,7 +138,7 @@
           <div class="indicator__info">
             <span class="indicator__label">ไฟเหลือง (โหมด NONE / IDLE)</span>
             <span class="indicator__state" id="stateYellow">NONE</span>
-            <span class="indicator__desc" id="descYellow">🟡 ติดค้าง: โหมด NONE (M9=ON) | ⚡ กระพริบ 1s: รอตั้งเวลา</span>
+            <span class="indicator__desc" id="descYellow">🟡 ติดค้าง: โหมด NONE | ⚡ กระพริบ 1s: รอตั้งเวลา</span>
           </div>
         </div>
         <!-- ไฟเขียว: Step 2 (READY - กระพริบ 1s) / Step 3 (RUNNING - ติดค้าง) -->
@@ -203,7 +204,7 @@
         <div class="control-card" id="scheduleCard">
           <div class="control-card__header">
             <h3 class="control-card__title">⏰ ตั้งเวลาเปิด-ปิดแอร์ (Schedule)</h3>
-            <span class="schedule-status-tag" id="scheduleStatusTag">⚠️ รอการตั้งเวลา</span>
+            <span class="schedule-status-tag" id="scheduleStatusTag">⚡ โหมด NONE: กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)</span>
           </div>
 
           <!-- ═══ NONE / AUTO / MANUAL MODE TOGGLE ═══ -->

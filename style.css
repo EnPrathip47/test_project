@@ -5,38 +5,38 @@
 
 /* ── CSS Variables ── */
 :root {
-  --bg-primary: #f8fafc;
-  --bg-secondary: #ffffff;
+  --bg-primary: #eef2f6;
+  --bg-secondary: #f8fafc;
   --bg-card: #ffffff;
-  --bg-card-hover: #f1f5f9;
-  --bg-glass: #ffffff;
+  --bg-card-hover: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
 
   --text-primary: #0f172a;
-  --text-secondary: #475569;
+  --text-secondary: #334155;
   --text-muted: #64748b;
 
   --cyan: #0284c7;
-  --cyan-dim: rgba(2, 132, 199, 0.08);
-  --cyan-glow: rgba(2, 132, 199, 0.2);
+  --cyan-dim: rgba(2, 132, 199, 0.12);
+  --cyan-glow: rgba(2, 132, 199, 0.25);
   --green: #16a34a;
-  --green-dim: rgba(22, 163, 74, 0.08);
-  --green-glow: rgba(22, 163, 74, 0.25);
+  --green-dim: rgba(22, 163, 74, 0.12);
+  --green-glow: rgba(22, 163, 74, 0.3);
   --red: #dc2626;
-  --red-dim: rgba(220, 38, 38, 0.08);
-  --red-glow: rgba(220, 38, 38, 0.25);
+  --red-dim: rgba(220, 38, 38, 0.12);
+  --red-glow: rgba(220, 38, 38, 0.3);
   --amber: #d97706;
-  --amber-dim: rgba(217, 119, 6, 0.08);
-  --amber-glow: rgba(217, 119, 6, 0.25);
+  --amber-dim: rgba(217, 119, 6, 0.12);
+  --amber-glow: rgba(217, 119, 6, 0.3);
 
-  --border: #e2e8f0;
-  --border-hover: #cbd5e1;
+  --border: #cbd5e1;
+  --border-hover: #94a3b8;
 
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
 
-  --shadow-card: 0 4px 18px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
-  --shadow-glow-cyan: 0 0 18px rgba(2, 132, 199, 0.08);
+  --shadow-card: 0 4px 20px rgba(15, 23, 42, 0.07), 0 1px 4px rgba(15, 23, 42, 0.04);
+  --shadow-glow-cyan: 0 0 20px rgba(2, 132, 199, 0.12);
 
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: 0.15s ease;
@@ -70,9 +70,9 @@ body {
   position: absolute; top: -50%; left: -50%;
   width: 200%; height: 200%;
   background:
-    radial-gradient(ellipse 600px 400px at 20% 30%, rgba(2,132,199,0.04) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 500px at 80% 70%, rgba(22,163,74,0.03) 0%, transparent 70%),
-    radial-gradient(ellipse 400px 300px at 50% 50%, rgba(124,58,237,0.02) 0%, transparent 70%);
+    radial-gradient(ellipse 700px 450px at 15% 20%, rgba(2,132,199,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 600px 600px at 85% 75%, rgba(22,163,74,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 400px at 50% 50%, rgba(124,58,237,0.04) 0%, transparent 70%);
   animation: bgFloat 25s ease-in-out infinite alternate;
 }
 @keyframes bgFloat {
@@ -92,12 +92,12 @@ body {
 /* ── Header ── */
 .header {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 3px solid #0284c7;
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
 }
 .header__inner {
   max-width: 1360px; margin: 0 auto;
@@ -499,14 +499,14 @@ body {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.03), rgba(167, 139, 250, 0.03));
+  background: linear-gradient(135deg, #e2e8f0 0%, #edf2f7 100%);
 }
 
 .mode-toggle {
   position: relative;
   display: flex;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
+  background: #cbd5e1;
+  border: 1px solid #94a3b8;
   border-radius: 50px;
   padding: 3px;
   gap: 0;
@@ -762,8 +762,8 @@ body {
 }
 .schedule-field__input {
   width: 100%; padding: 8px 12px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -1206,8 +1206,8 @@ body {
 
 /* ── Unified Control & Remote Panel ── */
 .unified-control-card {
-  border: 1px solid rgba(0, 212, 255, 0.18) !important;
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.04), rgba(167, 139, 250, 0.03)) !important;
+  border: 1px solid #7dd3fc !important;
+  background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%) !important;
 }
 
 .combined-control-section {

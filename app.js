@@ -274,7 +274,7 @@
     if (DOM.offDate) DOM.offDate.min = todayIso;
 
     applyScheduleMode(state.scheduleMode);
-    
+
     // Evaluate Real-time State on startup / refresh:
     if (state.scheduleMode === 'auto') {
       const now = new Date();
@@ -307,7 +307,7 @@
     updateMqttStatusUI();
     updateMqttTempDisplay();
     addLog('info', `ระบบพร้อมใช้งาน — ใช้งาน HiveMQ Cloud MQTT over WSS (Port ${CONFIG.mqttWebSocketPort})`);
-    
+
     // Connect to HiveMQ MQTT Broker
     connectMqttBroker();
   }
@@ -428,8 +428,8 @@
       if (now >= start && now < stop) {
         updateSystemState('running');
         sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
-        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์ M5=ON และยิงสัญญาณ IR 10 ครั้ง`);
-        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR 10 ครั้ง (M5=ON)`);
+        addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดแอร์และยิงสัญญาณ IR`);
+        showToast('success', `ถึงเวลาเปิดแอร์แล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR`);
       }
     }
     // Case 3: เมื่อครบเวลาทำงาน (TIMEOUT / COMPLETE) -> สั่งปิดแอร์และยิง IR 10 ครั้ง
@@ -437,8 +437,8 @@
       if (now >= stop) {
         updateSystemState('timeout');
         sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 1); // [ Complete Flag set M500 ]
-        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และยิง IR 10 ครั้ง ปิดแอร์ (M500)`);
-        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — เซ็ต Complete Flag M500 (ยิง IR ปิดแอร์ 10 ครั้ง)`);
+        addLog('warning', `[Schedule] ครบเวลาเปิดแอร์ (${offTimeVal}) -> ส่งคำสั่งปิดแอร์และยิงสัญญาณ IR`);
+        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ส่งคำสั่งปิดแอร์และยิงสัญญาณ IR`);
       }
     }
   }
@@ -596,7 +596,7 @@
     const validVal = Math.min(27, Math.max(18, val));
     if (DOM.targetTemp) DOM.targetTemp.value = validVal;
     state.targetTemp = validVal;
-    
+
     document.querySelectorAll('.temp-chip').forEach((chip) => {
       const chipVal = parseFloat(chip.getAttribute('data-temp'));
       chip.classList.toggle('temp-chip--active', chipVal === validVal);
@@ -679,7 +679,7 @@
         if (m.mqttHost) CONFIG.mqttHost = m.mqttHost;
         if (m.mqttUsername) CONFIG.mqttUsername = m.mqttUsername;
         if (m.mqttPassword) CONFIG.mqttPassword = m.mqttPassword;
-      } catch (e) {}
+      } catch (e) { }
     }
     if (DOM.mqttHostInput) DOM.mqttHostInput.value = CONFIG.mqttHost;
     if (DOM.mqttUsernameInput) DOM.mqttUsernameInput.value = CONFIG.mqttUsername;
@@ -773,22 +773,22 @@
     saveSettings();
     broadcastUiSync('change_mode', { scheduleMode: mode });
 
-    const modeNoneFlag   = (mode === 'none')   ? 1 : 0;
-    const modeAutoFlag   = (mode === 'auto')   ? 1 : 0;
+    const modeNoneFlag = (mode === 'none') ? 1 : 0;
+    const modeAutoFlag = (mode === 'auto') ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
 
     // Send mode flag (M9 for NONE, M101 for AUTO, M100 for MANUAL) immediately to PLC via MQTT
     sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
 
     if (mode === 'none') {
-      showToast('info', '⚡ โหมด NONE — ส่งคำสั่ง M9=ON ไป PLC (ไฟเหลืองติดค้าง)');
-      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE — ส่งคำสั่ง M9=ON ไป PLC (ไฟเหลืองติดค้าง)');
+      showToast('info', '⚡ โหมด NONE — สลับเป็นโหมด NONE (ไฟเหลืองติดค้าง)');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ไฟเหลืองติดค้าง)');
     } else if (mode === 'auto') {
-      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO — ส่งคำสั่ง M101=ON ไป PLC ทันที (เวลาฟิกซ์ 08:00-17:00)');
-      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE — ส่งคำสั่ง M101=ON ไป PLC ทันที');
+      showToast('info', '🔄 เปลี่ยนเป็นโหมด AUTO (เวลาฟิกซ์ 08:00 - 17:00)');
+      addLog('info', '[Mode] เปลี่ยนเป็น AUTO MODE');
     } else if (mode === 'manual') {
-      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL — ส่งคำสั่ง M100=ON ไป PLC ทันที (ตั้งเวลาแล้วกด "บันทึกค่า")');
-      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE — ส่งคำสั่ง M100=ON ไป PLC ทันที');
+      showToast('info', '🛠️ เปลี่ยนเป็นโหมด MANUAL (ตั้งเวลาแล้วกด "บันทึกค่า")');
+      addLog('info', '[Mode] เปลี่ยนเป็น MANUAL MODE');
     }
   }
 
@@ -819,19 +819,19 @@
     // Mode info badge & description
     if (DOM.modeInfoBadge) {
       if (isNone) {
-        DOM.modeInfoBadge.textContent = '⚡ NONE MODE (M9)';
+        DOM.modeInfoBadge.textContent = '⚡ NONE MODE';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--none';
       } else if (isAuto) {
-        DOM.modeInfoBadge.textContent = '🔄 AUTO MODE (M101)';
+        DOM.modeInfoBadge.textContent = '🔄 AUTO MODE';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--auto';
       } else {
-        DOM.modeInfoBadge.textContent = '🛠️ MANUAL MODE (M100)';
+        DOM.modeInfoBadge.textContent = '🛠️ MANUAL MODE';
         DOM.modeInfoBadge.className = 'mode-info__badge mode-info__badge--manual';
       }
     }
     if (DOM.modeInfoDesc) {
       if (isNone) {
-        DOM.modeInfoDesc.textContent = 'โหมด NONE (M9=ON) | ไฟสีเหลืองติดค้าง (สลับเป็น AUTO หรือ MANUAL เพื่อเริ่ม)';
+        DOM.modeInfoDesc.textContent = 'โหมด NONE | ไฟสีเหลืองติดค้าง (สลับเป็น AUTO หรือ MANUAL เพื่อเริ่ม)';
       } else if (isAuto) {
         DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับอุณหภูมิได้ & กดหยุดได้เมื่อถึงเวลาทำงาน';
       } else {
@@ -873,7 +873,7 @@
       if (DOM.powerBtnOff) { DOM.powerBtnOff.classList.remove('mqtt-power-btn--active'); DOM.powerBtnOff.disabled = true; }
 
       if (DOM.scheduleStatusTag) {
-        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE (M9=ON) — ไฟเหลืองติดค้าง (สลับโหมดเพื่อเริ่ม)';
+        DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE: กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       }
       if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
@@ -996,7 +996,7 @@
         timestamp: Date.now()
       };
       state.mqttClient.publish(CONFIG.topicSync, JSON.stringify(presencePayload));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function startPresenceTimer() {
@@ -1059,7 +1059,7 @@
     };
     try {
       state.mqttClient.publish(CONFIG.topicSync, JSON.stringify(syncPayload));
-    } catch(e) {}
+    } catch (e) { }
   }
 
   function handleUiSyncMessage(data) {
@@ -1181,7 +1181,7 @@
   function connectMqttBroker() {
     if (state.demoMode) stopDemo();
     if (state.mqttClient) {
-      try { state.mqttClient.end(true); } catch(e){}
+      try { state.mqttClient.end(true); } catch (e) { }
       state.mqttClient = null;
     }
 
@@ -1206,7 +1206,7 @@
         mqttUsername: username,
         mqttPassword: password,
       }));
-    } catch(e) {}
+    } catch (e) { }
 
     const brokerUrl = `wss://${host}:${CONFIG.mqttWebSocketPort}${CONFIG.mqttPath}`;
     addLog('info', `กำลังเชื่อมต่อ HiveMQ Cloud (${host}:${CONFIG.mqttWebSocketPort}) [User: ${username}]...`);
@@ -1256,7 +1256,7 @@
         state.mqttClient.subscribe(CONFIG.topicSync, () => {
           try {
             state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({ type: 'request_sync', senderId: state.clientId }));
-          } catch(e) {}
+          } catch (e) { }
         });
 
         startPresenceTimer();
@@ -1294,7 +1294,7 @@
                   handleUiSyncMessage(syncData);
                 }
               }
-            } catch(e) {}
+            } catch (e) { }
           }
         } catch (err) {
           console.warn('Invalid MQTT Message:', topic, payload.toString());
@@ -1337,7 +1337,7 @@
 
   function disconnectMqttBroker() {
     if (state.mqttClient) {
-      try { state.mqttClient.end(true); } catch(e){}
+      try { state.mqttClient.end(true); } catch (e) { }
       state.mqttClient = null;
     }
     state.connected = false;
@@ -1383,9 +1383,9 @@
     let startDt = now;
     let stopDt = null;
 
-    const onTimeVal  = state.schedule.onTime  || DOM.onTime?.value;
+    const onTimeVal = state.schedule.onTime || DOM.onTime?.value;
     const offTimeVal = state.schedule.offTime || DOM.offTime?.value;
-    const onDateVal  = state.schedule.onDate  || DOM.onDate?.value;
+    const onDateVal = state.schedule.onDate || DOM.onDate?.value;
     const offDateVal = state.schedule.offDate || DOM.offDate?.value;
 
     if (onTimeVal && offTimeVal) {
@@ -1492,11 +1492,11 @@
     const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
     if (success) {
       if (isRunning || isAuto) {
-        showToast('success', `📡 ส่งคำสั่งอุณหภูมิ ${temp}°C ไปยัง PLC (M8=ON) — ยิง IR 10 ครั้ง`);
-        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (M8=ON) — บอร์ดสั่งยิง IR 10 ครั้ง`);
+        showToast('success', `📡 ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ`);
+        addLog('success', `[MQTT] ส่งคำสั่งปรับอุณหภูมิ ${temp}°C`);
       } else {
-        showToast('success', `💾 ส่งค่าอุณหภูมิ ${temp}°C ไปบันทึกใน PLC D11 (M8=ON) สำเร็จ (รอถึงเวลาจึงจะยิง IR 10 ครั้ง)`);
-        addLog('info', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปบันทึกใน PLC (M8=ON) — รอเริ่มทำงานตามเวลา`);
+        showToast('success', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (รอเริ่มทำงานตามเวลา)`);
+        addLog('info', `[MQTT] บันทึกค่าอุณหภูมิ ${temp}°C — รอเริ่มทำงานตามเวลา`);
       }
     }
   }
@@ -1704,8 +1704,13 @@
         DOM.scheduleStatusTag.textContent = `⚡ ตั้งค่าล่วงหน้าแล้ว — ไฟเขียวกระพริบ 1s${timeText}`;
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--ready';
       } else {
-        DOM.scheduleStatusTag.textContent = '⚠️ Step 1: รอตั้งเวลา (ไฟเหลืองกระพริบ 1s)';
-        DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
+        if (state.scheduleMode === 'none') {
+          DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE : กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)';
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
+        } else {
+          DOM.scheduleStatusTag.textContent = '⚠️ Step 1: รอตั้งเวลา (ไฟเหลืองกระพริบ 1s)';
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
+        }
       }
     }
 
@@ -1772,10 +1777,10 @@
 
         if (state.scheduleMode === 'none') {
           // ในโหมด NONE: ไฟเหลืองติดค้าง (amber-solid)
-          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'NONE', '🟡 ติดค้าง: โหมด NONE (M9=ON)');
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'NONE', '🟡 ติดค้าง: โหมด NONE');
           if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber';
           if (DOM.currentStateBadge) {
-            DOM.currentStateBadge.textContent = 'โหมด NONE (เหลืองติดค้าง - M9=ON)';
+            DOM.currentStateBadge.textContent = 'โหมด NONE (เหลืองติดค้าง)';
             DOM.currentStateBadge.className = 'state-badge state-badge--amber';
           }
         } else {
@@ -2165,15 +2170,15 @@
       onTimeVal = '08:00';
       offTimeVal = '17:00';
     } else {
-      onDateVal  = state.schedule.onDate  || DOM.onDate?.value  || todayIso;
+      onDateVal = state.schedule.onDate || DOM.onDate?.value || todayIso;
       offDateVal = state.schedule.offDate || DOM.offDate?.value || onDateVal;
-      onTimeVal  = state.schedule.onTime  || DOM.onTime?.value;
+      onTimeVal = state.schedule.onTime || DOM.onTime?.value;
       offTimeVal = state.schedule.offTime || DOM.offTime?.value;
     }
 
     const targetTemp = getValidTargetTemp();
 
-    const finalOnDate  = onDateVal  || todayIso;
+    const finalOnDate = onDateVal || todayIso;
     const finalOffDate = offDateVal || finalOnDate;
 
     const onIso = parseThaiDateToIso(finalOnDate);
@@ -2217,8 +2222,8 @@
     }
 
     // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
-    state.schedule.onDate  = finalOnDate;
-    state.schedule.onTime  = onTimeVal;
+    state.schedule.onDate = finalOnDate;
+    state.schedule.onTime = onTimeVal;
     state.schedule.offDate = finalOffDate;
     state.schedule.offTime = offTimeVal;
     state.schedule.enabled = true;
@@ -2232,14 +2237,14 @@
       sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
       updateSystemState('running');
       broadcastUiSync('start_ac');
-      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์ M5=ON และยิง IR 10 ครั้ง สำเร็จ`);
-      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (ยิง IR 10 ครั้ง)`);
+      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดแอร์สำเร็จ`);
+      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C`);
     } else {
       state.acOn = false;
       updateSystemState('ready');
       broadcastUiSync('start_ac');
-      addLog('info', `${modeLabel} กดเริ่มทำงานแล้ว — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C ไฟเขียวกระพริบรอจนถึงเวลาเริ่มจึงจะยิง IR 10 ครั้ง`);
-      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait} จึงจะยิง IR)`);
+      addLog('info', `${modeLabel} กดเริ่มทำงานแล้ว — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C (ไฟเขียวกระพริบรอเริ่มทำงานตามเวลา)`);
+      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
     }
   }
 

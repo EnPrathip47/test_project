@@ -127,10 +127,10 @@
           <span class="section__icon">🚦</span>
           สถานะหลอดไฟเตือน 3 สี
         </h2>
-        <span class="state-badge" id="currentStateBadge">โหมด NONE (เหลืองติดค้าง)</span>
+        <span class="state-badge" id="currentStateBadge">โหมด NONE (สแตนด์บาย)</span>
       </div>
       <div class="indicator-grid">
-        <!-- ไฟเหลือง: โหมด NONE (ติดค้าง) / Step 1 (IDLE - กระพริบ 1s) -->
+        <!-- ไฟเหลือง: โหมด NONE / Step 1 (IDLE) -->
         <div class="indicator" id="indicatorYellow">
           <div class="indicator__light indicator__light--amber-solid" id="lightYellow">
             <div class="indicator__glow"></div>
@@ -138,10 +138,10 @@
           <div class="indicator__info">
             <span class="indicator__label">ไฟเหลือง (โหมด NONE / IDLE)</span>
             <span class="indicator__state" id="stateYellow">NONE</span>
-            <span class="indicator__desc" id="descYellow">🟡 ติดค้าง: โหมด NONE | ⚡ กระพริบ 1s: รอตั้งเวลา</span>
+            <span class="indicator__desc" id="descYellow">โหมด NONE: สแตนด์บาย | Step 1: IDLE (รอตั้งเวลา)</span>
           </div>
         </div>
-        <!-- ไฟเขียว: Step 2 (READY - กระพริบ 1s) / Step 3 (RUNNING - ติดค้าง) -->
+        <!-- ไฟเขียว: Step 2 (READY) / Step 3 (RUNNING) -->
         <div class="indicator" id="indicatorGreen">
           <div class="indicator__light indicator__light--off" id="lightGreen">
             <div class="indicator__glow"></div>
@@ -149,10 +149,10 @@
           <div class="indicator__info">
             <span class="indicator__label">ไฟเขียว (Step 2/3)</span>
             <span class="indicator__state" id="stateGreen">OFF</span>
-            <span class="indicator__desc" id="descGreen">⚡ กระพริบ 1s: READY (รอถึงเวลาเริ่ม) | 🟢 ติดค้าง: ทำงาน</span>
+            <span class="indicator__desc" id="descGreen">Step 2: READY (พร้อมทำงาน) | Step 3: RUNNING (กำลังทำงาน)</span>
           </div>
         </div>
-        <!-- ไฟแดง: Step 4 (TIMEOUT - กระพริบ 1s) / Case 2 (STOP - ติดค้าง) -->
+        <!-- ไฟแดง: Step 4 (TIMEOUT) / STOPPED -->
         <div class="indicator" id="indicatorRed">
           <div class="indicator__light indicator__light--off" id="lightRed">
             <div class="indicator__glow"></div>
@@ -160,7 +160,7 @@
           <div class="indicator__info">
             <span class="indicator__label">ไฟแดง (Step 4 / Stop)</span>
             <span class="indicator__state" id="stateRed">OFF</span>
-            <span class="indicator__desc" id="descRed">⚡ กระพริบ 1s: ครบเวลา | 🔴 ติดค้าง: กด Stop (ต้องกดรีเซท)</span>
+            <span class="indicator__desc" id="descRed">Step 4: TIMEOUT (ครบเวลา) | STOPPED: หยุดทำงาน (กดรีเซท)</span>
           </div>
         </div>
       </div>
@@ -169,22 +169,22 @@
       <div class="state-flow">
         <div class="state-flow__step state-flow__step--active" id="flowIdle">
           <div class="state-flow__dot state-flow__dot--amber-blink"></div>
-          <span>Step 1: IDLE (เหลืองกระพริบ)</span>
+          <span>Step 1: IDLE (สแตนด์บาย / รอตั้งเวลา)</span>
         </div>
         <div class="state-flow__arrow">➔</div>
         <div class="state-flow__step" id="flowReady">
           <div class="state-flow__dot state-flow__dot--green-blink"></div>
-          <span>Step 2: READY (เขียวกระพริบ)</span>
+          <span>Step 2: READY (พร้อมทำงาน / รอเวลาเริ่ม)</span>
         </div>
         <div class="state-flow__arrow">➔</div>
         <div class="state-flow__step" id="flowRunning">
           <div class="state-flow__dot state-flow__dot--green"></div>
-          <span>Step 3: RUNNING (เขียวติดค้าง)</span>
+          <span>Step 3: RUNNING (กำลังทำงาน / เปิดเครื่อง)</span>
         </div>
         <div class="state-flow__arrow">➔</div>
         <div class="state-flow__step" id="flowStopped">
           <div class="state-flow__dot state-flow__dot--red"></div>
-          <span>Step 4/Stop (แดงกระพริบ/ติดค้าง)</span>
+          <span>Step 4: STOP (หยุดทำงาน / ครบเวลา)</span>
         </div>
         <div class="state-flow__arrow state-flow__arrow--reset">🔄 กดรีเซทวนลูป</div>
       </div>
@@ -241,7 +241,7 @@
                     <input type="date" class="schedule-field__input schedule-field__input--date" id="onDate" />
                   </div>
                   <div class="schedule-field">
-                    <label class="schedule-field__label" for="onTime">เวลา (ชช:นน)</label>
+                    <label class="schedule-field__label" for="onTime">เวลา (ชั่วโมง : นาที)</label>
                     <input type="time" class="schedule-field__input" id="onTime" />
                   </div>
                 </div>
@@ -261,7 +261,7 @@
                     <input type="date" class="schedule-field__input schedule-field__input--date" id="offDate" />
                   </div>
                   <div class="schedule-field">
-                    <label class="schedule-field__label" for="offTime">เวลา (ชช:นน)</label>
+                    <label class="schedule-field__label" for="offTime">เวลา (ชั่วโมง : นาที)</label>
                     <input type="time" class="schedule-field__input" id="offTime" />
                   </div>
                 </div>

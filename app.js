@@ -1782,14 +1782,14 @@
             timeText = ` (รอถึงเวลา ${onT})`;
           }
         }
-        DOM.scheduleStatusTag.textContent = `⚡ ตั้งค่าล่วงหน้าแล้ว — ไฟเขียวกระพริบ 1s${timeText}`;
+        DOM.scheduleStatusTag.textContent = `⚡ ตั้งค่าล่วงหน้าแล้ว — รอถึงเวลาเริ่ม${timeText}`;
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--ready';
       } else {
         if (state.scheduleMode === 'none') {
           DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE : กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)';
           DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
         } else {
-          DOM.scheduleStatusTag.textContent = '⚠️ Step 1: รอตั้งเวลา (ไฟเหลืองกระพริบ 1s)';
+          DOM.scheduleStatusTag.textContent = '⚠️ Step 1: IDLE (สแตนด์บาย / รอตั้งเวลา)';
           DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
         }
       }
@@ -1798,7 +1798,7 @@
     switch (nextState) {
       case 'ready':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ตั้งเวลาแล้ว)');
-        setLight(DOM.lightGreen, DOM.stateGreen, 'green-blink', 'READY', '⚡ กระพริบ 1s: รอถึงเวลาเริ่ม/รอกดสตาร์ท');
+        setLight(DOM.lightGreen, DOM.stateGreen, 'green-blink', 'READY', 'READY: พร้อมทำงาน / รอถึงเวลาเริ่ม');
         DOM.flowReady?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
           const onT = state.schedule.onTime || DOM.onTime?.value || '';
@@ -1813,17 +1813,17 @@
               timeText = ` (รอถึงเวลา ${onT})`;
             }
           }
-          DOM.currentStateBadge.textContent = `Step 2: READY (เขียวกระพริบ 1s)${timeText}`;
+          DOM.currentStateBadge.textContent = `Step 2: READY (พร้อมทำงาน)${timeText}`;
           DOM.currentStateBadge.className = 'state-badge state-badge--ready';
         }
         break;
 
       case 'running':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ');
-        setLight(DOM.lightGreen, DOM.stateGreen, 'green-solid', 'RUNNING', '🟢 ติดค้าง: เครื่องปรับอากาศกำลังทำงาน');
+        setLight(DOM.lightGreen, DOM.stateGreen, 'green-solid', 'RUNNING', '🟢 RUNNING: เครื่องปรับอากาศกำลังทำงาน');
         DOM.flowRunning?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'Step 3: RUNNING (เขียวติดค้าง)';
+          DOM.currentStateBadge.textContent = 'Step 3: RUNNING (กำลังทำงาน)';
           DOM.currentStateBadge.className = 'state-badge state-badge--running';
         }
         break;
@@ -1831,10 +1831,10 @@
       case 'timeout':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
         setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
-        setLight(DOM.lightRed, DOM.stateRed, 'red-blink', 'TIMEOUT', '⚡ กระพริบ 1s: ครบเวลาทำงาน (ต้องกดรีเซท)');
+        setLight(DOM.lightRed, DOM.stateRed, 'red-blink', 'TIMEOUT', 'TIMEOUT: ครบเวลาทำงาน (ต้องกดรีเซท)');
         DOM.flowStopped?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'Step 4: TIMEOUT (แดงกระพริบ - กดรีเซท)';
+          DOM.currentStateBadge.textContent = 'Step 4: TIMEOUT (ครบเวลาทำงาน - กดรีเซท)';
           DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
         }
         break;
@@ -1842,10 +1842,10 @@
       case 'stopped':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
         setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
-        setLight(DOM.lightRed, DOM.stateRed, 'red-solid', 'STOPPED', '🔴 ติดค้าง: กด Stop (ต้องกดรีเซท)');
+        setLight(DOM.lightRed, DOM.stateRed, 'red-solid', 'STOPPED', 'STOPPED: กดหยุดทำงาน (ต้องกดรีเซท)');
         DOM.flowStopped?.classList.add('state-flow__step--active');
         if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'Case 2: STOPPED (แดงติดค้าง - กดรีเซท)';
+          DOM.currentStateBadge.textContent = 'STOPPED (หยุดทำงาน - กดรีเซท)';
           DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
         }
         break;
@@ -1857,19 +1857,19 @@
         const idleDot = DOM.flowIdle?.querySelector('.state-flow__dot');
 
         if (state.scheduleMode === 'none') {
-          // ในโหมด NONE: ไฟเหลืองติดค้าง (amber-solid)
-          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'NONE', '🟡 ติดค้าง: โหมด NONE');
+          // ในโหมด NONE
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'NONE', '🟡 โหมด NONE: สแตนด์บาย');
           if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber';
           if (DOM.currentStateBadge) {
-            DOM.currentStateBadge.textContent = 'โหมด NONE (เหลืองติดค้าง)';
+            DOM.currentStateBadge.textContent = 'โหมด NONE (สแตนด์บาย)';
             DOM.currentStateBadge.className = 'state-badge state-badge--amber';
           }
         } else {
-          // ในโหมด AUTO / MANUAL ที่ยังไม่ได้บันทึกเวลา: ไฟเหลืองกระพริบ 1s (amber-blink)
-          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-blink', 'IDLE', '⚡ กระพริบ 1s: ยังไม่ตั้งเวลา/รีเซท');
+          // ในโหมด AUTO / MANUAL ที่ยังไม่ได้บันทึกเวลา
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-blink', 'IDLE', 'IDLE: สแตนด์บาย / รอตั้งเวลา');
           if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber-blink';
           if (DOM.currentStateBadge) {
-            DOM.currentStateBadge.textContent = 'Step 1: IDLE (เหลืองกระพริบ 1s)';
+            DOM.currentStateBadge.textContent = 'Step 1: IDLE (สแตนด์บาย / รอตั้งเวลา)';
             DOM.currentStateBadge.className = 'state-badge state-badge--amber-blink';
           }
         }
@@ -2369,15 +2369,22 @@
     state.irTransmitting = false;
     state.systemState = 'idle';
 
-    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
+    // 1. ส่งคำสั่ง reset=1 (ขอบขาขึ้น / Rising Edge) ไปยัง ESP32/PLC
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
     saveSettings();
+
+    // 2. ขอบขาลง (Falling Edge): คืนค่า reset=0 อัตโนมัติใน 300ms เพื่อให้เป็นพัลส์ขอบขาขึ้นจังหวะเดียว (One-Shot)
+    setTimeout(() => {
+      if (state.mqttClient && state.mqttClient.connected) {
+        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0);
+      }
+    }, 300);
 
     // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
     applyScheduleMode('none');
 
     broadcastUiSync('reset_system');
-    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
+    addLog('info', 'รีเซทระบบเรียบร้อย (พัลส์ M7 ขอบขาขึ้น) — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
     showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
   }
 

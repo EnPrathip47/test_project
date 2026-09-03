@@ -1628,7 +1628,7 @@
     if (startTimeStr || stopTimeStr) {
       timeDetailsHtml = `
         <div style="margin-top: 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.8); border-radius: 10px; font-size: 0.88rem; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.08);">
-          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (เริ่มทันที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
+          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (+2 นาที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
           ${stopTimeStr ? `<div>⏰ <strong>เวลาปิด (HMI ตั้งไว้):</strong> <span style="color: #f87171; font-weight: bold;">${stopTimeStr}</span></div>` : ''}
         </div>
       `;
@@ -1775,13 +1775,18 @@
         if (DOM.onDate) { DOM.onDate.value = todayIso; DOM.onDate.disabled = true; }
         if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
       } else {
-        // โหมด MANUAL: อัปเดตเวลาเริ่ม (เริ่มทันที) และเวลาปิดตามที่ HMI ตั้งไว้ (D500-D504)
+        // โหมด MANUAL: อัปเดตเวลาเริ่ม (คำนวณ +2 นาที) และเวลาปิดตามที่ HMI ตั้งไว้ (D500-D504)
         if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
           let pHour = Number(mqttData.plc_hour);
-          let pMin = Number(mqttData.plc_minute);
+          let pMin = Number(mqttData.plc_minute) + 2;
           let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
           let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
           let pDay = Number(mqttData.plc_day || (new Date()).getDate());
+
+          if (pMin >= 60) {
+            pMin -= 60;
+            pHour = (pHour + 1) % 24;
+          }
 
           const calcOnTime = `${String(pHour).padStart(2, '0')}:${String(pMin).padStart(2, '0')}`;
           const calcOnDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
@@ -1836,7 +1841,7 @@
       }
 
       showHmiCommandPopup('คำสั่งจากจอ HMI / PLC', detailMsg, curTemp, startStr, stopStr);
-      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C | เวลาเริ่ม: ${startStr} | เวลาปิด: ${stopStr}`);
+      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C ${startStr ? '| เวลาเริ่ม (+2 นาที): ' + startStr : ''} ${stopStr ? '| เวลาปิด: ' + stopStr : ''}`);
     }
 
     // 7. Hardware Status Badges

@@ -1582,258 +1582,45 @@
     }
   }
 
-  // Show HMI Notification Popup Modal / Banner
-  function showHmiCommandPopup(title, details, temp, startTimeStr, stopTimeStr) {
-    if (!document.getElementById('hmiPopupStyles')) {
-      const style = document.createElement('style');
-      style.id = 'hmiPopupStyles';
-      style.textContent = `
-        @keyframes hmiSlideIn {
-          from { opacity: 0; transform: translateY(-20px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    const existing = document.getElementById('hmiNotificationModal');
-    if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-    modal.id = 'hmiNotificationModal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 24px;
-      right: 24px;
-      z-index: 99999;
-      max-width: 440px;
-      background: rgba(15, 23, 42, 0.95);
-      border: 1.5px solid rgba(56, 189, 248, 0.6);
-      border-radius: 16px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(56, 189, 248, 0.25);
-      backdrop-filter: blur(16px);
-      color: #f8fafc;
-      padding: 18px 22px;
-      font-family: 'Inter', system-ui, sans-serif;
-      animation: hmiSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    `;
-
-    let timeDetailsHtml = '';
-    if (startTimeStr || stopTimeStr) {
-      timeDetailsHtml = `
-        <div style="margin-top: 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.8); border-radius: 10px; font-size: 0.88rem; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.08);">
-          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (เริ่มทันที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
-          ${stopTimeStr ? `<div>⏰ <strong>เวลาปิด (HMI ตั้งไว้):</strong> <span style="color: #f87171; font-weight: bold;">${stopTimeStr}</span></div>` : ''}
-        </div>
-      `;
-    }
-
-    modal.innerHTML = `
-      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
-            🎛️
-          </div>
-          <div>
-            <div style="font-weight: 700; font-size: 1.05rem; color: #38bdf8;">คำสั่งจากจอ HMI / PLC</div>
-            <div style="font-size: 0.84rem; color: #cbd5e1; margin-top: 2px;">${details}</div>
-          </div>
-        </div>
-        <button id="closeHmiModalBtn" style="background: none; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
-      </div>
-      <div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 0.92rem; background: rgba(56, 189, 248, 0.08); padding: 8px 12px; border-radius: 8px;">
-        <span style="color: #cbd5e1;">🌡️ อุณหภูมิเป้าหมายที่ HMI ตั้งไว้:</span>
-        <span style="font-size: 1.15rem; font-weight: 800; color: #38bdf8; background: rgba(56, 189, 248, 0.2); padding: 2px 10px; border-radius: 6px;">${temp}°C</span>
-      </div>
-      ${timeDetailsHtml}
-      <div style="margin-top: 12px; font-size: 0.75rem; color: #64748b; text-align: right;">✓ อัปเดตค่าลงหน้าเว็บเรียบร้อยแล้ว</div>
-    `;
-
-    document.body.appendChild(modal);
-
-    const closeBtn = modal.querySelector('#closeHmiModalBtn');
-    if (closeBtn) {
-      closeBtn.onclick = () => modal.remove();
-    }
-
-    setTimeout(() => {
-      if (document.body.contains(modal)) {
-        modal.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
-        modal.style.opacity = '0';
-        modal.style.transform = 'translateY(-10px)';
-        setTimeout(() => modal.remove(), 400);
-      }
-    }, 8000);
-  }
-
-  // Handle incoming status payload from ESP32 (Actual Real-Time State Readback from PLC/HMI)
+  // Handle incoming status payload from ESP32 (Actual State Readback)
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
 
-    // 1. Sync Active Mode from PLC/HMI (M9, M100, M101 / schedule_mode)
-    if (mqttData.schedule_mode && typeof mqttData.schedule_mode === 'string') {
-      const serverMode = mqttData.schedule_mode.toLowerCase();
-      if (serverMode === 'none' || serverMode === 'auto' || serverMode === 'manual') {
-        if (state.scheduleMode !== serverMode) {
-          applyScheduleMode(serverMode);
+    // In NONE mode, keep inputs blank / empty as requested by user
+    if (state.scheduleMode !== 'none') {
+      if (mqttData.power !== undefined && !state.userModifiedPower) {
+        state.acPower = Number(mqttData.power);
+        state.acOn = (state.acPower === 1);
+        updateControlButtons();
+      }
+
+      if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
+        const t = parseFloat(mqttData.temperature);
+        if (!isNaN(t) && t >= 18 && t <= 27) {
+          state.targetTemp = t;
+          if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
+            DOM.targetTemp.value = t;
+          }
+          updateMqttTempDisplay();
+        }
+      }
+
+      if (mqttData.mode !== undefined && !state.userModifiedMode) {
+        state.acMode = Number(mqttData.mode);
+        if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
+          DOM.modeSelect.value = state.acMode;
+        }
+      }
+
+      if (mqttData.fan !== undefined && !state.userModifiedFan) {
+        state.acFan = Number(mqttData.fan);
+        if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
+          DOM.fanSelect.value = state.acFan;
         }
       }
     }
 
-    // 2. Sync Real Target Temperature (D12) from PLC/HMI
-    if (mqttData.temperature !== undefined) {
-      const t = parseFloat(mqttData.temperature);
-      if (!isNaN(t) && t >= 18 && t <= 27) {
-        state.targetTemp = t;
-        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
-          DOM.targetTemp.value = t;
-        }
-        updateMqttTempDisplay();
-      }
-    }
-
-    // 3. Sync AC Power & Control States from PLC Readback
-    if (mqttData.power !== undefined) {
-      state.acPower = Number(mqttData.power);
-      state.acOn = (state.acPower === 1);
-      updateControlButtons();
-    }
-
-    if (mqttData.mode !== undefined) {
-      state.acMode = Number(mqttData.mode);
-      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
-        DOM.modeSelect.value = state.acMode;
-      }
-    }
-
-    if (mqttData.fan !== undefined) {
-      state.acFan = Number(mqttData.fan);
-      if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
-        DOM.fanSelect.value = state.acFan;
-      }
-    }
-
-    // 4. Sync PLC Real-Time Clock (D400-D404 from TRD) to Header Display
-    if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
-      const h = String(mqttData.plc_hour).padStart(2, '0');
-      const m = String(mqttData.plc_minute).padStart(2, '0');
-      if (DOM.headerClock) {
-        DOM.headerClock.textContent = `${h}:${m} (PLC)`;
-      }
-    }
-
-    // 5. Sync Stop Time from PLC (D500-D504) in Manual Mode
-    if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined) {
-      if (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0) {
-        const sh = String(mqttData.stop_hour).padStart(2, '0');
-        const sm = String(mqttData.stop_minute).padStart(2, '0');
-        const sy = mqttData.stop_year || (new Date()).getFullYear();
-        const smo = String(mqttData.stop_month || ((new Date()).getMonth() + 1)).padStart(2, '0');
-        const sd = String(mqttData.stop_day || (new Date()).getDate()).padStart(2, '0');
-        const stopTimeStr = `${sh}:${sm}`;
-        const stopDateStr = `${sy}-${smo}-${sd}`;
-
-        if (state.scheduleMode === 'manual') {
-          state.schedule.offTime = stopTimeStr;
-          state.schedule.offDate = stopDateStr;
-          if (DOM.offTime && document.activeElement !== DOM.offTime) DOM.offTime.value = stopTimeStr;
-          if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = stopDateStr;
-        }
-      }
-    }
-
-    // 6. Process HMI Command Notification & Real-Time Sync
-    if (mqttData.hmi_cmd && typeof mqttData.hmi_cmd === 'string' && mqttData.hmi_cmd.length > 0) {
-      const cmd = mqttData.hmi_cmd;
-      const curTemp = (mqttData.temperature !== undefined) ? parseFloat(mqttData.temperature) : state.targetTemp;
-
-      let startStr = '';
-      let stopStr = '';
-
-      const isCurrentAuto = (state.scheduleMode === 'auto' || cmd === 'temp_auto' || mqttData.mode_auto === 1);
-
-      if (isCurrentAuto) {
-        // โหมด AUTO: เวลาฟิกซ์ไว้แล้ว (08:00 - 17:00 น.) เปลี่ยนได้แค่อุณหภูมิเท่านั้น
-        const todayIso = getTodayIso();
-        startStr = '08:00 (ฟิกซ์เวลา)';
-        stopStr = '17:00 (ฟิกซ์เวลา)';
-
-        state.schedule.onTime = '08:00';
-        state.schedule.offTime = '17:00';
-        state.schedule.onDate = todayIso;
-        state.schedule.offDate = todayIso;
-        state.schedule.enabled = true;
-
-        if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
-        if (DOM.offTime) { DOM.offTime.value = '17:00'; DOM.offTime.disabled = true; }
-        if (DOM.onDate) { DOM.onDate.value = todayIso; DOM.onDate.disabled = true; }
-        if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
-      } else {
-        // โหมด MANUAL: อัปเดตเวลาเริ่ม (เริ่มทันที) และเวลาปิดตามที่ HMI ตั้งไว้ (D500-D504)
-        if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
-          let pHour = Number(mqttData.plc_hour);
-          let pMin = Number(mqttData.plc_minute);
-          let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
-          let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
-          let pDay = Number(mqttData.plc_day || (new Date()).getDate());
-
-          const calcOnTime = `${String(pHour).padStart(2, '0')}:${String(pMin).padStart(2, '0')}`;
-          const calcOnDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
-          startStr = `${calcOnTime} (${formatDisplayDate(calcOnDate)})`;
-
-          state.schedule.onTime = calcOnTime;
-          state.schedule.onDate = calcOnDate;
-          if (DOM.onTime) DOM.onTime.value = calcOnTime;
-          if (DOM.onDate) DOM.onDate.value = calcOnDate;
-        }
-
-        if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0)) {
-          const sHour = Number(mqttData.stop_hour);
-          const sMin = Number(mqttData.stop_minute);
-          const sYear = Number(mqttData.stop_year || (new Date()).getFullYear());
-          const sMonth = Number(mqttData.stop_month || ((new Date()).getMonth() + 1));
-          const sDay = Number(mqttData.stop_day || (new Date()).getDate());
-
-          const calcOffTime = `${String(sHour).padStart(2, '0')}:${String(sMin).padStart(2, '0')}`;
-          const calcOffDate = `${sYear}-${String(sMonth).padStart(2, '0')}-${String(sDay).padStart(2, '0')}`;
-          stopStr = `${calcOffTime} (${formatDisplayDate(calcOffDate)})`;
-
-          state.schedule.offTime = calcOffTime;
-          state.schedule.offDate = calcOffDate;
-          if (DOM.offTime) DOM.offTime.value = calcOffTime;
-          if (DOM.offDate) DOM.offDate.value = calcOffDate;
-        }
-      }
-
-      // อัปเดตอุณหภูมิเป้าหมาย (เปลี่ยนได้ทั้งในโหมด Auto และ Manual)
-      if (!isNaN(curTemp) && curTemp >= 18 && curTemp <= 27) {
-        state.targetTemp = curTemp;
-        if (DOM.targetTemp) DOM.targetTemp.value = curTemp;
-        updateMqttTempDisplay();
-      }
-
-      let detailMsg = 'มีการสั่งงานผ่านจอ HMI / PLC';
-      if (cmd === 'start_manual') {
-        detailMsg = 'โหมด MANUAL (M5+M60+M61 ครบเงื่อนไข): เริ่มทำงานทันที';
-        state.acOn = true;
-        state.schedule.enabled = true;
-        updateSystemState('running');
-      } else if (cmd === 'temp_auto') {
-        detailMsg = `โหมด AUTO (M70+M71 ครบเงื่อนไข): ปรับอุณหภูมิใหม่เป็น ${curTemp}°C (เวลาฟิกซ์ 08:00 - 17:00 น.)`;
-        updateMqttTempDisplay();
-      } else if (cmd === 'temp_change') {
-        detailMsg = 'ปรับค่าอุณหภูมิแอร์เป้าหมาย (D12)';
-      } else if (cmd === 'mode_change') {
-        detailMsg = `สลับโหมดการทำงาน (${(mqttData.schedule_mode || state.scheduleMode).toUpperCase()})`;
-      } else if (cmd === 'timeout_stop') {
-        detailMsg = 'ครบเวลาทำงานตามที่ HMI ตั้งไว้ (Timeout Stop)';
-      }
-
-      showHmiCommandPopup('คำสั่งจากจอ HMI / PLC', detailMsg, curTemp, startStr, stopStr);
-      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C | เวลาเริ่ม: ${startStr} | เวลาปิด: ${stopStr}`);
-    }
-
-    // 7. Hardware Status Badges
+    // Hardware Status Badges
     if (mqttData.esp32_online !== undefined) {
       state.esp32Online = Boolean(mqttData.esp32_online);
     }
@@ -1841,38 +1628,12 @@
       state.plcOnline = Boolean(mqttData.plc_online);
     }
 
-    // 8. 3 Temperature Sensors Readback (D1-D3)
+    // 3 Temperature Sensors Readback (D0-D2)
     if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
     if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
     if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
     if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined) {
       updateTempBadge();
-    }
-
-    // 9. Sync Real Hardware Lamps (Y0-Y2 / M1-M3) & Timeout / Complete Flag (M500)
-    const isM500Complete = Boolean(mqttData.complete === 1 || mqttData.complete === true || mqttData.m500 === 1 || mqttData.m500_complete === 1);
-    const isRedOn = Boolean(mqttData.m2_red === 1 || mqttData.y0_red === 1);
-    const isGreenOn = Boolean(mqttData.m1_green === 1 || mqttData.y2_green === 1);
-    const isYellowOn = Boolean(mqttData.m3_yellow === 1 || mqttData.y1_yellow === 1);
-
-    if (isM500Complete || (isRedOn && state.systemState !== 'stopped')) {
-      if (isM500Complete && state.systemState !== 'timeout') {
-        state.acOn = false;
-        state.acPower = 0;
-        updateSystemState('timeout');
-        addLog('warning', '⏰ PLC/HMI แจ้งเตือน: ครบเวลาทำงาน (M500 Complete) — แอร์หยุดทำงานแล้ว (กรุณากดปุ่มรีเซทเพื่อเริ่มใหม่)');
-        showToast('warning', '⏰ ครบเวลาทำงานแล้ว (Timeout) — กรุณากดปุ่มรีเซท');
-      } else if (!isM500Complete && isRedOn && state.systemState !== 'stopped' && state.systemState !== 'timeout') {
-        state.acOn = false;
-        state.acPower = 0;
-        updateSystemState('stopped');
-      }
-    } else if (isGreenOn && state.systemState !== 'running') {
-      state.acOn = true;
-      state.acPower = 1;
-      updateSystemState('running');
-    } else if (isYellowOn && state.systemState !== 'idle' && state.systemState !== 'ready' && state.systemState !== 'running') {
-      updateSystemState('idle');
     }
 
     updateMqttStatusUI();
@@ -2608,22 +2369,15 @@
     state.irTransmitting = false;
     state.systemState = 'idle';
 
-    // 1. ส่งคำสั่ง reset=1 (ขอบขาขึ้น / Rising Edge) ไปยัง ESP32/PLC
+    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
     saveSettings();
-
-    // 2. ขอบขาลง (Falling Edge): คืนค่า reset=0 อัตโนมัติใน 300ms เพื่อให้เป็นพัลส์ขอบขาขึ้นจังหวะเดียว (One-Shot)
-    setTimeout(() => {
-      if (state.mqttClient && state.mqttClient.connected) {
-        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0);
-      }
-    }, 300);
 
     // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
     applyScheduleMode('none');
 
     broadcastUiSync('reset_system');
-    addLog('info', 'รีเซทระบบเรียบร้อย (พัลส์ M7 ขอบขาขึ้น) — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
+    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
     showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
   }
 

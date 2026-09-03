@@ -1572,12 +1572,19 @@
     const isRunning = (state.systemState === 'running' || state.acOn);
     const power = (isRunning || isAuto) ? 1 : (state.acPower || 1);
 
-    // กดปุ่ม SEND MQTT -> ส่ง mqtt_send = 1 ไปหา ESP32 เพื่อเขียนค่า D11 ลง PLC ทันทีและยิง IR
+    // กดปุ่ม SEND MQTT (M8) -> ส่ง mqtt_send = 1 (พัลส์ขอบขาขึ้น) ไปหา ESP32 เพื่อพัลส์ M8 และเขียน D11 ลง PLC
     const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
     if (success) {
       startIrTransmissionLock(5500);
-      showToast('success', `📡 [SEND MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-      addLog('success', `[SEND MQTT] ส่งค่าอุณหภูมิ ${temp}°C เขียนลง PLC (D11) ทันที (กำลังยิง IR 10 รอบ)`);
+      showToast('success', `📡 [SEND MQTT] ส่งพัลส์ M8 และค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ`);
+      addLog('success', `[SEND MQTT] ส่งพัลส์ M8 และอุณหภูมิ ${temp}°C เขียนลง PLC (D11) ทันที (ยิง IR 10 รอบ)`);
+
+      // คืนค่า mqtt_send = 0 อัตโนมัติใน 300ms เพื่อให้เป็นสัญญาณพัลส์ขอบขาขึ้นครบวงรอบ
+      setTimeout(() => {
+        if (state.mqttClient && state.mqttClient.connected) {
+          sendMqttPayload(power, temp, mode, fan, 0, 0, 0, 0);
+        }
+      }, 300);
     }
   }
 

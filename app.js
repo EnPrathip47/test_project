@@ -1622,7 +1622,7 @@
     if (startTimeStr || stopTimeStr) {
       timeDetailsHtml = `
         <div style="margin-top: 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.8); border-radius: 10px; font-size: 0.88rem; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.08);">
-          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (คำนวณ +2 นาที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
+          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (เริ่มทันที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
           ${stopTimeStr ? `<div>⏰ <strong>เวลาปิด (HMI ตั้งไว้):</strong> <span style="color: #f87171; font-weight: bold;">${stopTimeStr}</span></div>` : ''}
         </div>
       `;
@@ -1750,46 +1750,62 @@
       let startStr = '';
       let stopStr = '';
 
-      // Calculate Start Time: Current PLC TRD Time + 2 Minutes
-      if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
-        let pHour = Number(mqttData.plc_hour);
-        let pMin = Number(mqttData.plc_minute) + 2;
-        let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
-        let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
-        let pDay = Number(mqttData.plc_day || (new Date()).getDate());
+      const isCurrentAuto = (state.scheduleMode === 'auto' || cmd === 'temp_auto' || mqttData.mode_auto === 1);
 
-        if (pMin >= 60) {
-          pMin -= 60;
-          pHour = (pHour + 1) % 24;
+      if (isCurrentAuto) {
+        // โหมด AUTO: เวลาฟิกซ์ไว้แล้ว (08:00 - 17:00 น.) เปลี่ยนได้แค่อุณหภูมิเท่านั้น
+        const todayIso = getTodayIso();
+        startStr = '08:00 (ฟิกซ์เวลา)';
+        stopStr = '17:00 (ฟิกซ์เวลา)';
+
+        state.schedule.onTime = '08:00';
+        state.schedule.offTime = '17:00';
+        state.schedule.onDate = todayIso;
+        state.schedule.offDate = todayIso;
+        state.schedule.enabled = true;
+
+        if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
+        if (DOM.offTime) { DOM.offTime.value = '17:00'; DOM.offTime.disabled = true; }
+        if (DOM.onDate) { DOM.onDate.value = todayIso; DOM.onDate.disabled = true; }
+        if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
+      } else {
+        // โหมด MANUAL: อัปเดตเวลาเริ่ม (เริ่มทันที) และเวลาปิดตามที่ HMI ตั้งไว้ (D500-D504)
+        if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
+          let pHour = Number(mqttData.plc_hour);
+          let pMin = Number(mqttData.plc_minute);
+          let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
+          let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
+          let pDay = Number(mqttData.plc_day || (new Date()).getDate());
+
+          const calcOnTime = `${String(pHour).padStart(2, '0')}:${String(pMin).padStart(2, '0')}`;
+          const calcOnDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
+          startStr = `${calcOnTime} (${formatDisplayDate(calcOnDate)})`;
+
+          state.schedule.onTime = calcOnTime;
+          state.schedule.onDate = calcOnDate;
+          if (DOM.onTime) DOM.onTime.value = calcOnTime;
+          if (DOM.onDate) DOM.onDate.value = calcOnDate;
         }
 
-        const calcOnTime = `${String(pHour).padStart(2, '0')}:${String(pMin).padStart(2, '0')}`;
-        const calcOnDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
-        startStr = `${calcOnTime} (${formatDisplayDate(calcOnDate)})`;
+        if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0)) {
+          const sHour = Number(mqttData.stop_hour);
+          const sMin = Number(mqttData.stop_minute);
+          const sYear = Number(mqttData.stop_year || (new Date()).getFullYear());
+          const sMonth = Number(mqttData.stop_month || ((new Date()).getMonth() + 1));
+          const sDay = Number(mqttData.stop_day || (new Date()).getDate());
 
-        state.schedule.onTime = calcOnTime;
-        state.schedule.onDate = calcOnDate;
-        if (DOM.onTime) DOM.onTime.value = calcOnTime;
-        if (DOM.onDate) DOM.onDate.value = calcOnDate;
+          const calcOffTime = `${String(sHour).padStart(2, '0')}:${String(sMin).padStart(2, '0')}`;
+          const calcOffDate = `${sYear}-${String(sMonth).padStart(2, '0')}-${String(sDay).padStart(2, '0')}`;
+          stopStr = `${calcOffTime} (${formatDisplayDate(calcOffDate)})`;
+
+          state.schedule.offTime = calcOffTime;
+          state.schedule.offDate = calcOffDate;
+          if (DOM.offTime) DOM.offTime.value = calcOffTime;
+          if (DOM.offDate) DOM.offDate.value = calcOffDate;
+        }
       }
 
-      if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0)) {
-        const sHour = Number(mqttData.stop_hour);
-        const sMin = Number(mqttData.stop_minute);
-        const sYear = Number(mqttData.stop_year || (new Date()).getFullYear());
-        const sMonth = Number(mqttData.stop_month || ((new Date()).getMonth() + 1));
-        const sDay = Number(mqttData.stop_day || (new Date()).getDate());
-
-        const calcOffTime = `${String(sHour).padStart(2, '0')}:${String(sMin).padStart(2, '0')}`;
-        const calcOffDate = `${sYear}-${String(sMonth).padStart(2, '0')}-${String(sDay).padStart(2, '0')}`;
-        stopStr = `${calcOffTime} (${formatDisplayDate(calcOffDate)})`;
-
-        state.schedule.offTime = calcOffTime;
-        state.schedule.offDate = calcOffDate;
-        if (DOM.offTime) DOM.offTime.value = calcOffTime;
-        if (DOM.offDate) DOM.offDate.value = calcOffDate;
-      }
-
+      // อัปเดตอุณหภูมิเป้าหมาย (เปลี่ยนได้ทั้งในโหมด Auto และ Manual)
       if (!isNaN(curTemp) && curTemp >= 18 && curTemp <= 27) {
         state.targetTemp = curTemp;
         if (DOM.targetTemp) DOM.targetTemp.value = curTemp;
@@ -1798,12 +1814,13 @@
 
       let detailMsg = 'มีการสั่งงานผ่านจอ HMI / PLC';
       if (cmd === 'start_manual') {
-        detailMsg = 'โหมด MANUAL: สั่งเริ่มทำงานและตั้งเวลา';
+        detailMsg = 'โหมด MANUAL (M5+M60+M61 ครบเงื่อนไข): เริ่มทำงานทันที';
         state.acOn = true;
         state.schedule.enabled = true;
         updateSystemState('running');
       } else if (cmd === 'temp_auto') {
-        detailMsg = 'โหมด AUTO: ส่งค่าปรับอุณหภูมิใหม่';
+        detailMsg = `โหมด AUTO (M70+M71 ครบเงื่อนไข): ปรับอุณหภูมิใหม่เป็น ${curTemp}°C (เวลาฟิกซ์ 08:00 - 17:00 น.)`;
+        updateMqttTempDisplay();
       } else if (cmd === 'temp_change') {
         detailMsg = 'ปรับค่าอุณหภูมิแอร์เป้าหมาย (D12)';
       } else if (cmd === 'mode_change') {
@@ -1813,7 +1830,7 @@
       }
 
       showHmiCommandPopup('คำสั่งจากจอ HMI / PLC', detailMsg, curTemp, startStr, stopStr);
-      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C ${startStr ? '| เวลาเริ่ม (+2 นาที): ' + startStr : ''} ${stopStr ? '| เวลาปิด: ' + stopStr : ''}`);
+      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C | เวลาเริ่ม: ${startStr} | เวลาปิด: ${stopStr}`);
     }
 
     // 7. Hardware Status Badges

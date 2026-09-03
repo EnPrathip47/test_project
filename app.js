@@ -1557,7 +1557,7 @@
 
   function sendMqttCommandFromUI() {
     if (state.scheduleMode === 'none') {
-      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
+      showToast('warning', 'กดปุ่ม SEND MQTT ได้เฉพาะโหมด AUTO หรือ MANUAL เท่านั้น');
       return;
     }
     if (state.irTransmitting) {
@@ -1565,28 +1565,19 @@
       return;
     }
 
-    const inWorkingWindow = isCurrentlyInWorkingWindow();
-    const isRunning = (state.systemState === 'running' || state.acOn) && inWorkingWindow;
     const temp = getValidTargetTemp();
     const mode = state.acMode;
     const fan = state.acFan;
+    const isAuto = (state.scheduleMode === 'auto');
+    const isRunning = (state.systemState === 'running' || state.acOn);
+    const power = (isRunning || isAuto) ? 1 : (state.acPower || 1);
 
-    if (isRunning) {
-      // อยู่ในช่วงเวลาทำงานและเครื่องปรับอากาศกำลังทำงาน -> ส่ง mqtt_send = 1 เพื่อยิง IR 10 รอบเปลี่ยนอุณหภูมิเครื่องปรับอากาศจริง
-      const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
-      if (success) {
-        startIrTransmissionLock(5500);
-        showToast('success', `📡 อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-        addLog('success', `[MQTT] อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
-      }
-    } else {
-      // ไม่ได้อยู่ในช่วงเวลาทำงาน (ก่อน 08:00/หลัง 17:00 หรือยังไม่ถึงเวลาเริ่ม) -> ห้ามยิง IR (mqtt_send = 0)
-      const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 0, 0);
-      if (success) {
-        const timeHint = (state.scheduleMode === 'auto') ? '08:00 - 17:00' : 'ตามเวลาที่ตั้งไว้';
-        showToast('info', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (ยังไม่ถึงช่วงเวลาทำงาน ${timeHint} — ห้ามยิง IR)`);
-        addLog('info', `[MQTT] บันทึกอุณหภูมิ ${temp}°C — ยังไม่ถึงช่วงเวลาทำงาน (ห้ามยิง IR)`);
-      }
+    // กดปุ่ม SEND MQTT -> ส่ง mqtt_send = 1 ไปหา ESP32 เพื่อเขียนค่า D11 ลง PLC ทันทีและยิง IR
+    const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
+    if (success) {
+      startIrTransmissionLock(5500);
+      showToast('success', `📡 [SEND MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+      addLog('success', `[SEND MQTT] ส่งค่าอุณหภูมิ ${temp}°C เขียนลง PLC (D11) ทันที (กำลังยิง IR 10 รอบ)`);
     }
   }
 
@@ -2161,6 +2152,7 @@
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
+        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดรีเซทเพื่อกลับไปโหมด NONE';
       }
 
       // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
@@ -2175,6 +2167,7 @@
       if (DOM.fanSelect) DOM.fanSelect.disabled = true;
       if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
+      // เมื่อกดหยุด ล็อกปุ่มสลับโหมดไว้ ต้องกดรีเซทเพื่อกลับไปโหมด NONE เท่านั้น
       if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = true;
       if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
       if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
@@ -2182,7 +2175,7 @@
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 2. โหมด NONE: ล็อกปุ่มและอินพุตทุกอย่าง ยกเว้นปุ่มสลับโหมด!
+    // 2. โหมด NONE: ล็อกทุกอย่าง (รวมถึงปุ่ม SEND MQTT) ปลดล็อกเฉพาะปุ่มสลับโหมด
     // ──────────────────────────────────────────────────────────────
     if (isNone) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2190,12 +2183,16 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
+      // ล็อกปุ่ม SEND MQTT และช่องปรับอุณหภูมิในโหมด NONE (กดได้เฉพาะ 2 โหมดคือ AUTO หรือ MANUAL)
       if (DOM.targetTemp) DOM.targetTemp.disabled = true;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
       if (DOM.modeSelect) DOM.modeSelect.disabled = true;
       if (DOM.fanSelect) DOM.fanSelect.disabled = true;
-      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      if (DOM.btnSendMqtt) {
+        DOM.btnSendMqtt.disabled = true;
+        DOM.btnSendMqtt.title = 'กดปุ่ม SEND MQTT ได้เฉพาะในโหมด AUTO หรือ MANUAL เท่านั้น';
+      }
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
 
       if (DOM.btnSave) {
@@ -2225,7 +2222,7 @@
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้, กดส่ง MQTT ได้, กดหยุดได้เมื่อถึงเวลาทำงาน)
+    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้, กดส่ง MQTT ได้, ล็อกปุ่ม STOP จนกว่าจะถึงเวลาทำงาน)
     // ──────────────────────────────────────────────────────────────
     if (isAuto) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2233,16 +2230,19 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
-      // เปิดให้ปรับอุณหภูมิและส่งคำสั่งเครื่องปรับอากาศได้
+      // ปลดล็อกให้ปรับอุณหภูมิและกดปุ่ม SEND MQTT ได้ (1 ใน 2 โหมดที่กดได้)
       if (DOM.targetTemp) DOM.targetTemp.disabled = false;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
       if (DOM.modeSelect) DOM.modeSelect.disabled = false;
       if (DOM.fanSelect) DOM.fanSelect.disabled = false;
-      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
+      if (DOM.btnSendMqtt) {
+        DOM.btnSendMqtt.disabled = false;
+        DOM.btnSendMqtt.title = 'ส่งค่าอุณหภูมิไปยัง PLC (D11)';
+      }
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
 
-      // ล็อกทุกปุ่มยกเว้นรีเซท
+      // ล็อกปุ่มบันทึกและเริ่มทำงาน (เพราะเวลาฟิกซ์อัตโนมัติแล้ว)
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
         if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'โหมด AUTO ฟิกซ์เวลาแล้ว';
@@ -2253,13 +2253,15 @@
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงานอัตโนมัติ' : 'ทำงานอัตโนมัติตามเวลา';
         DOM.btnStart.title = 'โหมด AUTO ทำงานอัตโนมัติ';
       }
-      // ปุ่มหยุดทำงาน: ปลดล็อกให้กดได้เมื่อถึงเวลาทำงาน (running)
+
+      // โหมด AUTO: ล็อกปุ่ม STOP ไว้จนกว่าจะถึงเวลาทำงาน (08:00 - 17:00 น. และระบบทำงานอยู่)
+      const isAutoRunning = (state.systemState === 'running' || state.acOn) || isCurrentlyInWorkingWindow();
       if (DOM.btnStop) {
-        DOM.btnStop.disabled = (state.systemState !== 'running');
+        DOM.btnStop.disabled = !isAutoRunning;
         if (DOM.btnStopHint) {
-          DOM.btnStopHint.textContent = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน' : 'กดได้เมื่อถึงเวลาทำงาน';
+          DOM.btnStopHint.textContent = isAutoRunning ? 'กดเพื่อหยุดการทำงาน' : 'ล็อกปุ่มไว้จนกว่าจะถึงเวลาทำงาน (08:00 - 17:00)';
         }
-        DOM.btnStop.title = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'สามารถกดหยุดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
+        DOM.btnStop.title = isAutoRunning ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'ปุ่มล็อกอยู่ จะกดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false; // กดได้เฉพาะปุ่มรีเซท!

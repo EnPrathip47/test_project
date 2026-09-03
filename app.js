@@ -1666,45 +1666,83 @@
     }, 8000);
   }
 
-  // Handle incoming status payload from ESP32 (Actual State Readback)
+  // Handle incoming status payload from ESP32 (Actual Real-Time State Readback from PLC/HMI)
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
 
-    // In NONE mode, keep inputs blank / empty as requested by user
-    if (state.scheduleMode !== 'none') {
-      if (mqttData.power !== undefined && !state.userModifiedPower) {
-        state.acPower = Number(mqttData.power);
-        state.acOn = (state.acPower === 1);
-        updateControlButtons();
-      }
-
-      if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
-        const t = parseFloat(mqttData.temperature);
-        if (!isNaN(t) && t >= 18 && t <= 27) {
-          state.targetTemp = t;
-          if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
-            DOM.targetTemp.value = t;
-          }
-          updateMqttTempDisplay();
-        }
-      }
-
-      if (mqttData.mode !== undefined && !state.userModifiedMode) {
-        state.acMode = Number(mqttData.mode);
-        if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
-          DOM.modeSelect.value = state.acMode;
-        }
-      }
-
-      if (mqttData.fan !== undefined && !state.userModifiedFan) {
-        state.acFan = Number(mqttData.fan);
-        if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
-          DOM.fanSelect.value = state.acFan;
+    // 1. Sync Active Mode from PLC/HMI (M9, M100, M101 / schedule_mode)
+    if (mqttData.schedule_mode && typeof mqttData.schedule_mode === 'string') {
+      const serverMode = mqttData.schedule_mode.toLowerCase();
+      if (serverMode === 'none' || serverMode === 'auto' || serverMode === 'manual') {
+        if (state.scheduleMode !== serverMode) {
+          applyScheduleMode(serverMode);
         }
       }
     }
 
-    // Process HMI Command Notification & Real-Time Sync
+    // 2. Sync Real Target Temperature (D12) from PLC/HMI
+    if (mqttData.temperature !== undefined) {
+      const t = parseFloat(mqttData.temperature);
+      if (!isNaN(t) && t >= 18 && t <= 27) {
+        state.targetTemp = t;
+        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
+          DOM.targetTemp.value = t;
+        }
+        updateMqttTempDisplay();
+      }
+    }
+
+    // 3. Sync AC Power & Control States from PLC Readback
+    if (mqttData.power !== undefined) {
+      state.acPower = Number(mqttData.power);
+      state.acOn = (state.acPower === 1);
+      updateControlButtons();
+    }
+
+    if (mqttData.mode !== undefined) {
+      state.acMode = Number(mqttData.mode);
+      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
+        DOM.modeSelect.value = state.acMode;
+      }
+    }
+
+    if (mqttData.fan !== undefined) {
+      state.acFan = Number(mqttData.fan);
+      if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
+        DOM.fanSelect.value = state.acFan;
+      }
+    }
+
+    // 4. Sync PLC Real-Time Clock (D400-D404 from TRD) to Header Display
+    if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
+      const h = String(mqttData.plc_hour).padStart(2, '0');
+      const m = String(mqttData.plc_minute).padStart(2, '0');
+      if (DOM.headerClock) {
+        DOM.headerClock.textContent = `${h}:${m} (PLC)`;
+      }
+    }
+
+    // 5. Sync Stop Time from PLC (D500-D504) in Manual Mode
+    if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined) {
+      if (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0) {
+        const sh = String(mqttData.stop_hour).padStart(2, '0');
+        const sm = String(mqttData.stop_minute).padStart(2, '0');
+        const sy = mqttData.stop_year || (new Date()).getFullYear();
+        const smo = String(mqttData.stop_month || ((new Date()).getMonth() + 1)).padStart(2, '0');
+        const sd = String(mqttData.stop_day || (new Date()).getDate()).padStart(2, '0');
+        const stopTimeStr = `${sh}:${sm}`;
+        const stopDateStr = `${sy}-${smo}-${sd}`;
+
+        if (state.scheduleMode === 'manual') {
+          state.schedule.offTime = stopTimeStr;
+          state.schedule.offDate = stopDateStr;
+          if (DOM.offTime && document.activeElement !== DOM.offTime) DOM.offTime.value = stopTimeStr;
+          if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = stopDateStr;
+        }
+      }
+    }
+
+    // 6. Process HMI Command Notification & Real-Time Sync
     if (mqttData.hmi_cmd && typeof mqttData.hmi_cmd === 'string' && mqttData.hmi_cmd.length > 0) {
       const cmd = mqttData.hmi_cmd;
       const curTemp = (mqttData.temperature !== undefined) ? parseFloat(mqttData.temperature) : state.targetTemp;
@@ -1712,10 +1750,10 @@
       let startStr = '';
       let stopStr = '';
 
-      // 1. Calculate Start Time: Current PLC TRD Time + 2 Minutes
+      // Calculate Start Time: Current PLC TRD Time + 2 Minutes
       if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
         let pHour = Number(mqttData.plc_hour);
-        let pMin = Number(mqttData.plc_minute) + 2; // บวกเพิ่ม 2 นาทีเสมอ
+        let pMin = Number(mqttData.plc_minute) + 2;
         let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
         let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
         let pDay = Number(mqttData.plc_day || (new Date()).getDate());
@@ -1735,7 +1773,6 @@
         if (DOM.onDate) DOM.onDate.value = calcOnDate;
       }
 
-      // 2. Stop Time from HMI (D500-D504)
       if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0)) {
         const sHour = Number(mqttData.stop_hour);
         const sMin = Number(mqttData.stop_minute);
@@ -1753,7 +1790,6 @@
         if (DOM.offDate) DOM.offDate.value = calcOffDate;
       }
 
-      // 3. Update Target Temp on Form
       if (!isNaN(curTemp) && curTemp >= 18 && curTemp <= 27) {
         state.targetTemp = curTemp;
         if (DOM.targetTemp) DOM.targetTemp.value = curTemp;
@@ -1780,7 +1816,7 @@
       addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C ${startStr ? '| เวลาเริ่ม (+2 นาที): ' + startStr : ''} ${stopStr ? '| เวลาปิด: ' + stopStr : ''}`);
     }
 
-    // Hardware Status Badges
+    // 7. Hardware Status Badges
     if (mqttData.esp32_online !== undefined) {
       state.esp32Online = Boolean(mqttData.esp32_online);
     }
@@ -1788,7 +1824,7 @@
       state.plcOnline = Boolean(mqttData.plc_online);
     }
 
-    // 3 Temperature Sensors Readback (D0-D2)
+    // 8. 3 Temperature Sensors Readback (D1-D3)
     if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
     if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
     if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
@@ -1796,14 +1832,30 @@
       updateTempBadge();
     }
 
-    // Schedule Complete / Timeout Flag from PLC / HMI (M500)
+    // 9. Sync Real Hardware Lamps (Y0-Y2 / M1-M3) & Timeout / Complete Flag (M500)
     const isM500Complete = Boolean(mqttData.complete === 1 || mqttData.complete === true || mqttData.m500 === 1 || mqttData.m500_complete === 1);
-    if (isM500Complete && state.systemState !== 'timeout') {
-      state.acOn = false;
-      state.acPower = 0;
-      updateSystemState('timeout');
-      addLog('warning', '⏰ PLC/HMI แจ้งเตือน: ครบเวลาทำงาน (M500 Complete) — แอร์หยุดทำงานแล้ว (กรุณากดปุ่มรีเซทเพื่อเริ่มใหม่)');
-      showToast('warning', '⏰ ครบเวลาทำงานแล้ว (Timeout) — กรุณากดปุ่มรีเซท');
+    const isRedOn = Boolean(mqttData.m2_red === 1 || mqttData.y0_red === 1);
+    const isGreenOn = Boolean(mqttData.m1_green === 1 || mqttData.y2_green === 1);
+    const isYellowOn = Boolean(mqttData.m3_yellow === 1 || mqttData.y1_yellow === 1);
+
+    if (isM500Complete || (isRedOn && state.systemState !== 'stopped')) {
+      if (isM500Complete && state.systemState !== 'timeout') {
+        state.acOn = false;
+        state.acPower = 0;
+        updateSystemState('timeout');
+        addLog('warning', '⏰ PLC/HMI แจ้งเตือน: ครบเวลาทำงาน (M500 Complete) — แอร์หยุดทำงานแล้ว (กรุณากดปุ่มรีเซทเพื่อเริ่มใหม่)');
+        showToast('warning', '⏰ ครบเวลาทำงานแล้ว (Timeout) — กรุณากดปุ่มรีเซท');
+      } else if (!isM500Complete && isRedOn && state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+        state.acOn = false;
+        state.acPower = 0;
+        updateSystemState('stopped');
+      }
+    } else if (isGreenOn && state.systemState !== 'running') {
+      state.acOn = true;
+      state.acPower = 1;
+      updateSystemState('running');
+    } else if (isYellowOn && state.systemState !== 'idle' && state.systemState !== 'ready' && state.systemState !== 'running') {
+      updateSystemState('idle');
     }
 
     updateMqttStatusUI();

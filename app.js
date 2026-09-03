@@ -618,7 +618,15 @@
     if (isUserAction) {
       state.userModifiedTemp = true;
       broadcastUiSync('change_control');
-      showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว — กรุณากดปุ่ม "ส่งคำสั่งรีโมท (SEND MQTT)" เพื่อยิงสัญญาณ IR`);
+      if (state.connected) {
+        const isAuto = (state.scheduleMode === 'auto');
+        const isRunning = (state.systemState === 'running' || state.acOn);
+        const power = (isRunning || isAuto) ? 1 : (state.acPower || 0);
+        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${validVal}°C ไปยัง PLC (D11) แล้ว`);
+      } else {
+        showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว (ออฟไลน์)`);
+      }
     }
   }
 
@@ -1680,7 +1688,7 @@
       }
     }
 
-    // 2. Sync Real Target Temperature (D12) from PLC/HMI
+    // 2. Sync Real Target Temperature (D11) from PLC/HMI
     if (mqttData.temperature !== undefined) {
       const t = parseFloat(mqttData.temperature);
       if (!isNaN(t) && t >= 18 && t <= 27) {
@@ -1822,7 +1830,7 @@
         detailMsg = `โหมด AUTO (M70+M71 ครบเงื่อนไข): ปรับอุณหภูมิใหม่เป็น ${curTemp}°C (เวลาฟิกซ์ 08:00 - 17:00 น.)`;
         updateMqttTempDisplay();
       } else if (cmd === 'temp_change') {
-        detailMsg = 'ปรับค่าอุณหภูมิแอร์เป้าหมาย (D12)';
+        detailMsg = 'ปรับค่าอุณหภูมิแอร์เป้าหมาย (D11)';
       } else if (cmd === 'mode_change') {
         detailMsg = `สลับโหมดการทำงาน (${(mqttData.schedule_mode || state.scheduleMode).toUpperCase()})`;
       } else if (cmd === 'timeout_stop') {

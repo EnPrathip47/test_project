@@ -1579,12 +1579,6 @@
       showToast('success', `📡 [SEND MQTT] ส่งพัลส์ M8 และค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ`);
       addLog('success', `[SEND MQTT] ส่งพัลส์ M8 และอุณหภูมิ ${temp}°C เขียนลง PLC (D11) ทันที (ยิง IR 10 รอบ)`);
 
-      // คืนค่า mqtt_send = 0 อัตโนมัติใน 300ms เพื่อให้เป็นสัญญาณพัลส์ขอบขาขึ้นครบวงรอบ
-      setTimeout(() => {
-        if (state.mqttClient && state.mqttClient.connected) {
-          sendMqttPayload(power, temp, mode, fan, 0, 0, 0, 0);
-        }
-      }, 300);
     }
   }
 
@@ -2167,27 +2161,27 @@
         if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดรีเซทเพื่อกลับไปโหมด NONE';
       }
 
-      // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
+      // Lock schedule inputs during TIMEOUT / STOPPED state
       if (DOM.onDate) DOM.onDate.disabled = true;
       if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
-      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
-      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
-      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
-      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
-      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
-      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
-      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
-      // เมื่อกดหยุด ล็อกปุ่มสลับโหมดไว้ ต้องกดรีเซทเพื่อกลับไปโหมด NONE เท่านั้น
-      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = true;
-      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
-      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
+
+      // ปลดล็อกปุ่มรีเซท
+      if (DOM.btnReset) {
+        DOM.btnReset.disabled = false;
+        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดรีเซทเพื่อกลับไปโหมด NONE';
+      }
+
+      // ปลดล็อกปุ่มสลับโหมดเพื่อให้เลือกโหมดใหม่ได้
+      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
+      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
+      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
       return;
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 2. โหมด NONE: ล็อกทุกอย่าง (รวมถึงปุ่ม SEND MQTT) ปลดล็อกเฉพาะปุ่มสลับโหมด
+    // 2. โหมด NONE: ล็อกปุ่มเวลาและปุ่ม SEND MQTT (กดส่งได้เฉพาะ AUTO หรือ MANUAL)
     // ──────────────────────────────────────────────────────────────
     if (isNone) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2195,17 +2189,19 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
-      // ล็อกปุ่ม SEND MQTT และช่องปรับอุณหภูมิในโหมด NONE (กดได้เฉพาะ 2 โหมดคือ AUTO หรือ MANUAL)
-      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
-      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
-      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
-      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
-      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
+      // เปิดให้เลือกอุณหภูมิเป้าหมายได้
+      if (DOM.targetTemp) DOM.targetTemp.disabled = false;
+      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
+      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
+      if (DOM.modeSelect) DOM.modeSelect.disabled = false;
+      if (DOM.fanSelect) DOM.fanSelect.disabled = false;
+      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
+
+      // ล็อกปุ่ม SEND MQTT ในโหมด NONE (กดได้เฉพาะ 2 โหมดคือ AUTO หรือ MANUAL)
       if (DOM.btnSendMqtt) {
         DOM.btnSendMqtt.disabled = true;
         DOM.btnSendMqtt.title = 'กดปุ่ม SEND MQTT ได้เฉพาะในโหมด AUTO หรือ MANUAL เท่านั้น';
       }
-      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
 
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
@@ -2222,11 +2218,10 @@
         DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnReset) {
-        DOM.btnReset.disabled = true;
-        DOM.btnReset.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+        DOM.btnReset.disabled = false;
       }
 
-      // ปลดล็อกเฉพาะปุ่มสลับโหมด (NONE / AUTO / MANUAL)
+      // ปลดล็อกปุ่มสลับโหมด (NONE / AUTO / MANUAL)
       if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
       if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
       if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;

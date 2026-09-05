@@ -70,6 +70,20 @@
     userModifiedMode: false,
     userModifiedFan: false,
     userModifiedTemp: false,
+
+    // PLC RTC Time Sync (TRD D400-D406)
+    plcRtc: {
+      year: 0,
+      month: 0,
+      day: 0,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      dayOfWeek: 0,
+      timeStr: '',
+      valid: false,
+      lastSync: 0,
+    },
   };
 
   const SENSOR_COUNT = 3;
@@ -380,9 +394,27 @@
   // ── Clock & Schedule Monitor ──
   function setupClock() {
     function updateClock() {
-      const now = new Date();
+      let now = new Date();
+
+      // โหมด AUTO: ซิงค์เวลาจาก PLC TRD D400-D406 เพื่อความแม่นยำตรงกับ Ladder PLC
+      if (state.scheduleMode === 'auto' && state.plcRtc && state.plcRtc.valid && state.plcOnline) {
+        const elapsedSec = Math.floor((Date.now() - state.plcRtc.lastSync) / 1000);
+        const plcDate = new Date(
+          state.plcRtc.year,
+          state.plcRtc.month - 1,
+          state.plcRtc.day,
+          state.plcRtc.hour,
+          state.plcRtc.minute,
+          state.plcRtc.second + elapsedSec
+        );
+        if (!isNaN(plcDate.getTime())) {
+          now = plcDate;
+        }
+      }
+
       if (DOM.headerClock) {
-        DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false });
+        const isPlcSync = (state.scheduleMode === 'auto' && state.plcRtc?.valid && state.plcOnline);
+        DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false }) + (isPlcSync ? ' (PLC TRD Synced)' : '');
       }
       checkScheduleState(now);
       checkEsp32Watchdog();
@@ -391,15 +423,15 @@
     setInterval(updateClock, 1000);
   }
 
-  // Web-side ESP32 Watchdog: หากไม่ได้รับสัญญาณจาก ESP32 เกิน 5 วินาที ให้ปรับเป็น OFFLINE ทันที
+  // Web-side ESP32 Watchdog: หากไม่ได้รับสัญญาณจาก ESP32 เกิน 15 วินาที ให้ปรับเป็น OFFLINE
   function checkEsp32Watchdog() {
     if (state.connected && state.esp32Online && state.lastEsp32Heartbeat > 0) {
       const diffMs = Date.now() - state.lastEsp32Heartbeat;
-      if (diffMs > 5000) { // เกิน 5 วินาทีไม่มีข้อมูลจาก ESP32 (เท่ากับเวลาที่ Online ส่งข้อมูลมา)
+      if (diffMs > 15000) { // เกิน 15 วินาทีไม่มีข้อมูลจาก ESP32
         state.esp32Online = false;
         state.plcOnline = false;
         updateMqttStatusUI();
-        addLog('warning', 'ESP32 ขาดการติดต่อ (Watchdog Timeout > 5s) -> ปรับเป็น OFFLINE');
+        addLog('warning', 'ESP32 ขาดการติดต่อ (Watchdog Timeout > 15s) -> ปรับเป็น OFFLINE');
       }
     }
   }
@@ -1616,6 +1648,22 @@
     }
     if (mqttData.plc_online !== undefined) {
       state.plcOnline = Boolean(mqttData.plc_online);
+    }
+
+    // PLC Real-Time Clock TRD D400-D406 Readback (ซิงค์เวลาจริงจาก PLC)
+    if (mqttData.plc_rtc_hour !== undefined && mqttData.plc_rtc_min !== undefined) {
+      state.plcRtc = {
+        year: Number(mqttData.plc_rtc_year || new Date().getFullYear()),
+        month: Number(mqttData.plc_rtc_month || (new Date().getMonth() + 1)),
+        day: Number(mqttData.plc_rtc_day || new Date().getDate()),
+        hour: Number(mqttData.plc_rtc_hour),
+        minute: Number(mqttData.plc_rtc_min),
+        second: Number(mqttData.plc_rtc_sec || 0),
+        dayOfWeek: Number(mqttData.plc_rtc_dow || 0),
+        timeStr: mqttData.plc_rtc_time || '',
+        valid: true,
+        lastSync: Date.now(),
+      };
     }
 
     // 3 Temperature Sensors Readback (D0-D2)

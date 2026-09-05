@@ -260,6 +260,20 @@
     scheduleGroupOff: document.getElementById('scheduleGroupOff'),
     onDateField: document.getElementById('onDateField'),
     offDateField: document.getElementById('offDateField'),
+
+    // PLC Hardware I/O LEDs
+    ledX0: document.getElementById('ledX0'),
+    ledX1: document.getElementById('ledX1'),
+    ledX2: document.getElementById('ledX2'),
+    ledY0: document.getElementById('ledY0'),
+    ledY1: document.getElementById('ledY1'),
+    ledY2: document.getElementById('ledY2'),
+    ledM5: document.getElementById('ledM5'),
+    ledM6: document.getElementById('ledM6'),
+    ledM7: document.getElementById('ledM7'),
+    ledM8: document.getElementById('ledM8'),
+    ledM42: document.getElementById('ledM42'),
+    ledM500: document.getElementById('ledM500'),
   };
 
   // ── Initialize ──
@@ -1594,86 +1608,10 @@
 
   // Show HMI Notification Popup Modal / Banner
   function showHmiCommandPopup(title, details, temp, startTimeStr, stopTimeStr) {
-    if (!document.getElementById('hmiPopupStyles')) {
-      const style = document.createElement('style');
-      style.id = 'hmiPopupStyles';
-      style.textContent = `
-        @keyframes hmiSlideIn {
-          from { opacity: 0; transform: translateY(-20px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
+    // ตัด popup ออกทั้งหมดตามคำสั่งผู้ใช้ (ไม่แสดงกล่องเด้ง popup รบกวนบนหน้าจอ)
     const existing = document.getElementById('hmiNotificationModal');
     if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-    modal.id = 'hmiNotificationModal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 24px;
-      right: 24px;
-      z-index: 99999;
-      max-width: 440px;
-      background: rgba(15, 23, 42, 0.95);
-      border: 1.5px solid rgba(56, 189, 248, 0.6);
-      border-radius: 16px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(56, 189, 248, 0.25);
-      backdrop-filter: blur(16px);
-      color: #f8fafc;
-      padding: 18px 22px;
-      font-family: 'Inter', system-ui, sans-serif;
-      animation: hmiSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    `;
-
-    let timeDetailsHtml = '';
-    if (startTimeStr || stopTimeStr) {
-      timeDetailsHtml = `
-        <div style="margin-top: 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.8); border-radius: 10px; font-size: 0.88rem; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.08);">
-          ${startTimeStr ? `<div>⏱️ <strong>เวลาเริ่ม (+2 นาที):</strong> <span style="color: #4ade80; font-weight: bold;">${startTimeStr}</span></div>` : ''}
-          ${stopTimeStr ? `<div>⏰ <strong>เวลาปิด (HMI ตั้งไว้):</strong> <span style="color: #f87171; font-weight: bold;">${stopTimeStr}</span></div>` : ''}
-        </div>
-      `;
-    }
-
-    modal.innerHTML = `
-      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
-            🎛️
-          </div>
-          <div>
-            <div style="font-weight: 700; font-size: 1.05rem; color: #38bdf8;">คำสั่งจากจอ HMI / PLC</div>
-            <div style="font-size: 0.84rem; color: #cbd5e1; margin-top: 2px;">${details}</div>
-          </div>
-        </div>
-        <button id="closeHmiModalBtn" style="background: none; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
-      </div>
-      <div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 0.92rem; background: rgba(56, 189, 248, 0.08); padding: 8px 12px; border-radius: 8px;">
-        <span style="color: #cbd5e1;">🌡️ อุณหภูมิเป้าหมายที่ HMI ตั้งไว้:</span>
-        <span style="font-size: 1.15rem; font-weight: 800; color: #38bdf8; background: rgba(56, 189, 248, 0.2); padding: 2px 10px; border-radius: 6px;">${temp}°C</span>
-      </div>
-      ${timeDetailsHtml}
-      <div style="margin-top: 12px; font-size: 0.75rem; color: #64748b; text-align: right;">✓ อัปเดตค่าลงหน้าเว็บเรียบร้อยแล้ว</div>
-    `;
-
-    document.body.appendChild(modal);
-
-    const closeBtn = modal.querySelector('#closeHmiModalBtn');
-    if (closeBtn) {
-      closeBtn.onclick = () => modal.remove();
-    }
-
-    setTimeout(() => {
-      if (document.body.contains(modal)) {
-        modal.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
-        modal.style.opacity = '0';
-        modal.style.transform = 'translateY(-10px)';
-        setTimeout(() => modal.remove(), 400);
-      }
-    }, 8000);
+    return;
   }
 
   // Handle incoming status payload from ESP32 (Actual Real-Time State Readback from PLC/HMI)
@@ -1858,9 +1796,38 @@
     }
 
     // 8. 3 Temperature Sensors Readback (D1-D3)
-    if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
-    if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
-    if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
+    if (mqttData.temp1 !== undefined) {
+      const t1 = parseFloat(mqttData.temp1);
+      updateSensor(1, t1);
+      const chipD1 = document.getElementById('chipD1');
+      if (chipD1) {
+        const lbl = chipD1.querySelector('.plc-io-chip__label');
+        if (lbl) lbl.textContent = `Sensor 1: ${t1.toFixed(1)}°C`;
+      }
+    }
+    if (mqttData.temp2 !== undefined) {
+      const t2 = parseFloat(mqttData.temp2);
+      updateSensor(2, t2);
+      const chipD2 = document.getElementById('chipD2');
+      if (chipD2) {
+        const lbl = chipD2.querySelector('.plc-io-chip__label');
+        if (lbl) lbl.textContent = `Sensor 2: ${t2.toFixed(1)}°C`;
+      }
+    }
+    if (mqttData.temp3 !== undefined) {
+      const t3 = parseFloat(mqttData.temp3);
+      updateSensor(3, t3);
+      const chipD3 = document.getElementById('chipD3');
+      if (chipD3) {
+        const lbl = chipD3.querySelector('.plc-io-chip__label');
+        if (lbl) lbl.textContent = `Sensor 3: ${t3.toFixed(1)}°C`;
+      }
+    }
+    const chipD11 = document.getElementById('chipD11');
+    if (chipD11) {
+      const lbl = chipD11.querySelector('.plc-io-chip__label');
+      if (lbl) lbl.textContent = `Set: ${state.targetTemp}°C`;
+    }
     if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined) {
       updateTempBadge();
     }
@@ -1871,13 +1838,46 @@
     const isGreenOn = Boolean(mqttData.m1_green === 1 || mqttData.y2_green === 1);
     const isYellowOn = Boolean(mqttData.m3_yellow === 1 || mqttData.y1_yellow === 1);
 
+    // 10. Update PLC Hardware I/O Panel LEDs (Live Real-Time Modbus Sync)
+    updateIoLed(DOM.ledX0, Boolean(mqttData.x0_start === 1), 'plc-io-chip__led--green');
+    updateIoLed(DOM.ledX1, Boolean(mqttData.x1_stop === 1), 'plc-io-chip__led--red');
+    updateIoLed(DOM.ledX2, Boolean(mqttData.x2_reset === 1), 'plc-io-chip__led--yellow');
+
+    updateIoLed(DOM.ledY0, isRedOn, 'plc-io-chip__led--red');
+    updateIoLed(DOM.ledY1, isYellowOn, 'plc-io-chip__led--yellow');
+    updateIoLed(DOM.ledY2, isGreenOn, 'plc-io-chip__led--green');
+
+    updateIoLed(DOM.ledM5, Boolean(mqttData.m5 === 1 || (isGreenOn && state.acOn)), 'plc-io-chip__led--green');
+    updateIoLed(DOM.ledM6, Boolean(mqttData.m6 === 1 || (isRedOn && !isM500Complete)), 'plc-io-chip__led--red');
+    updateIoLed(DOM.ledM7, Boolean(mqttData.m7 === 1 || mqttData.x2_reset === 1), 'plc-io-chip__led--yellow');
+    updateIoLed(DOM.ledM8, Boolean(mqttData.m8 === 1), 'plc-io-chip__led--green');
+    updateIoLed(DOM.ledM42, Boolean(mqttData.m42 === 1 || state.schedule.enabled), 'plc-io-chip__led--green');
+    updateIoLed(DOM.ledM500, isM500Complete, 'plc-io-chip__led--red');
+
+    // 11. Handle Physical Hardware Inputs from PLC
+    if (mqttData.x0_start === 1 && !state.acOn) {
+      state.acOn = true;
+      state.acPower = 1;
+      updateSystemState('running');
+    }
+    if (mqttData.x1_stop === 1 && state.systemState !== 'stopped') {
+      state.acOn = false;
+      state.acPower = 0;
+      updateSystemState('stopped');
+    }
+    if (mqttData.x2_reset === 1) {
+      state.acOn = false;
+      state.acPower = 0;
+      state.schedule.enabled = false;
+      updateSystemState('idle');
+    }
+
     if (isM500Complete || (isRedOn && state.systemState !== 'stopped')) {
       if (isM500Complete && state.systemState !== 'timeout') {
         state.acOn = false;
         state.acPower = 0;
         updateSystemState('timeout');
         addLog('warning', '⏰ PLC/HMI แจ้งเตือน: ครบเวลาทำงาน (M500 Complete) — แอร์หยุดทำงานแล้ว (กรุณากดปุ่มรีเซทเพื่อเริ่มใหม่)');
-        showToast('warning', '⏰ ครบเวลาทำงานแล้ว (Timeout) — กรุณากดปุ่มรีเซท');
       } else if (!isM500Complete && isRedOn && state.systemState !== 'stopped' && state.systemState !== 'timeout') {
         state.acOn = false;
         state.acPower = 0;
@@ -2767,53 +2767,23 @@
   }
 
   // ============================================================
-  //  TOAST NOTIFICATIONS (SINGLE-TOAST ONLY ON USER CLICK)
+  // ============================================================
+  //  TOAST NOTIFICATIONS (ตัด popup ออกตามที่ผู้ใช้สั่ง)
   // ============================================================
 
-  let currentToastTimeout = null;
-  let lastToastMsg = '';
-  let lastToastTime = 0;
-
   function showToast(type, message) {
-    if (!DOM.toastContainer) return;
-    const now = Date.now();
+    // ตัด popup ออกทั้งหมด: ไม่แสดงกล่องเด้ง popup บนหน้าจอ
+    // บันทึกลงใน Activity Log เพื่อเก็บประวัติไว้ตรวจสอบ
+    return;
+  }
 
-    // Prevent duplicate toast spamming within 1.5 seconds
-    if (message === lastToastMsg && now - lastToastTime < 1500) {
-      return;
+  function updateIoLed(ledEl, active, colorClass) {
+    if (!ledEl) return;
+    if (active) {
+      ledEl.className = 'plc-io-chip__led plc-io-chip__led--active ' + (colorClass || '');
+    } else {
+      ledEl.className = 'plc-io-chip__led';
     }
-    lastToastMsg = message;
-    lastToastTime = now;
-
-    // Clear any previous toast immediately to show only 1 toast at a time
-    if (currentToastTimeout) {
-      clearTimeout(currentToastTimeout);
-      currentToastTimeout = null;
-    }
-    DOM.toastContainer.innerHTML = '';
-
-    const icons = {
-      info: '💡',
-      success: '✅',
-      warning: '⚠️',
-      error: '❌',
-    };
-
-    const toast = document.createElement('div');
-    toast.className = `toast toast--${type}`;
-    toast.innerHTML = `
-      <span class="toast__icon">${icons[type] || '💡'}</span>
-      <span class="toast__msg">${escapeHtml(message)}</span>
-    `;
-
-    DOM.toastContainer.appendChild(toast);
-
-    currentToastTimeout = setTimeout(() => {
-      toast.classList.add('toast--removing');
-      setTimeout(() => {
-        if (toast.parentElement) toast.remove();
-      }, 200);
-    }, 2000);
   }
 
   // ── Utilities ──

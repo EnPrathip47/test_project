@@ -267,6 +267,21 @@ body {
   color: var(--text-primary); line-height: 1; letter-spacing: 0.5px;
 }
 .sensor-card__unit { font-size: 0.8rem; color: var(--cyan); font-weight: 700; margin-top: 2px; }
+.sensor-card__reg-tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-family: 'Inter', monospace;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 212, 255, 0.12);
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  color: #00d4ff;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
+}
 .sensor-card__label { font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; letter-spacing: 0.3px; }
 .sensor-card__location {
   font-size: 0.82rem; font-weight: 700; color: #475569;
@@ -1517,3 +1532,210 @@ body {
   transform: none !important;
   box-shadow: none !important;
 }
+
+/* ── CUT POPUP OUT: Hide Toast Container completely ── */
+.toast-container {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* ── I/O TAG ON STATUS INDICATORS ── */
+.indicator__io-tag {
+  display: inline-block;
+  font-family: 'Inter', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #00d4ff;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  width: fit-content;
+}
+
+/* ── ACTION BUTTON I/O BADGES ── */
+.action-btn__top-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-btn__io-badge {
+  font-family: 'Inter', monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.5px;
+}
+
+/* ── PLC HARDWARE I/O REAL-TIME PANEL ── */
+.plc-io-panel {
+  margin-top: 24px;
+  background: rgba(10, 16, 30, 0.7);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.plc-io-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.plc-io-panel__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #00d4ff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plc-io-panel__legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.plc-io-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plc-io-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .plc-io-panel__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plc-io-group {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.plc-io-group__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.plc-io-group__items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 8px;
+}
+
+.plc-io-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  transition: var(--transition);
+}
+
+.plc-io-chip:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.plc-io-chip__pin {
+  font-family: 'Inter', monospace;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #00d4ff;
+}
+
+.plc-io-chip__label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plc-io-chip__led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.plc-io-led--on-sample {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+}
+
+.plc-io-led--off-sample {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* LED Active States */
+.plc-io-chip__led--active {
+  background: #00ff88 !important;
+  border-color: #00ff88 !important;
+  box-shadow: 0 0 8px #00ff88, 0 0 16px rgba(0, 255, 136, 0.5) !important;
+}
+
+.plc-io-chip__led--active.plc-io-chip__led--red {
+  background: #ff3b5c !important;
+  border-color: #ff3b5c !important;
+  box-shadow: 0 0 8px #ff3b5c, 0 0 16px rgba(255, 59, 92, 0.5) !important;
+}
+
+.plc-io-chip__led--active.plc-io-chip__led--yellow {
+  background: #ffb800 !important;
+  border-color: #ffb800 !important;
+  box-shadow: 0 0 8px #ffb800, 0 0 16px rgba(255, 184, 0, 0.5) !important;
+}
+
+.plc-io-chip__led--active.plc-io-chip__led--green {
+  background: #00ff88 !important;
+  border-color: #00ff88 !important;
+  box-shadow: 0 0 8px #00ff88, 0 0 16px rgba(0, 255, 136, 0.5) !important;
+}
+

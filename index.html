@@ -323,11 +323,8 @@
                   <!-- Mode -->
                   <div class="mqtt-field">
                     <label class="mqtt-field__label" for="modeSelect">🌀 Mode</label>
-                    <select class="mqtt-select" id="modeSelect" disabled>
-                      <option value="0">AUTO</option>
-                      <option value="1" selected>COOL</option>
-                      <option value="2">DRY</option>
-                      <option value="3">FAN</option>
+                    <select class="mqtt-select" id="modeSelect" disabled title="โหมดรีโมทฟิกซ์เป็น AUTO ไว้ตลอดเวลา">
+                      <option value="0" selected>🔒 AUTO (ฟิกซ์ตลอดเวลา)</option>
                     </select>
                   </div>
                   <!-- Fan -->
@@ -348,7 +345,7 @@
                 </div>
                 <!-- SEND Button for Mode/Fan updates -->
                 <div class="mqtt-send-area">
-                  <button type="button" class="mqtt-send-btn" id="btnSendMqtt" disabled>
+                  <button type="button" class="mqtt-send-btn" id="btnSendMqtt">
                     <span class="mqtt-send-btn__icon">📤</span>
                     <span class="mqtt-send-btn__text">ส่งคำสั่งรีโมท (SEND MQTT)</span>
                   </button>

@@ -56,7 +56,7 @@
     indicators: { power: false, running: false, fault: false },
     // MQTT Remote Control (Desired & Actual State)
     acPower: 0,     // 0=OFF, 1=ON
-    acMode: 0,      // 0=AUTO, 1=COOL, 2=DRY, 3=FAN
+    acMode: 0,      // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) ไว้ตลอดเวลา
     acFan: 0,       // 0=AUTO, 1=LOW, 2=MED, 3=HIGH
     esp32Online: false,
     plcOnline: false,
@@ -306,6 +306,12 @@
       updateSystemState(state.systemState || 'idle');
     }
 
+    state.acMode = 0;
+    if (DOM.modeSelect) {
+      DOM.modeSelect.value = '0';
+      DOM.modeSelect.disabled = true;
+    }
+
     updateMqttStatusUI();
     updateMqttTempDisplay();
     addLog('info', `ระบบพร้อมใช้งาน — ใช้งาน HiveMQ Cloud MQTT over WSS (Port ${CONFIG.mqttWebSocketPort})`);
@@ -552,10 +558,9 @@
     });
 
     DOM.modeSelect?.addEventListener('change', () => {
-      if (state.scheduleMode === 'none') return;
-      state.acMode = parseInt(DOM.modeSelect.value, 10);
-      state.userModifiedMode = true;
-      broadcastUiSync('change_control');
+      DOM.modeSelect.value = '0';
+      state.acMode = 0;
+      showToast('info', 'โหมดรีโมทถูกฟิกซ์เป็น AUTO ไว้ตลอดเวลา');
     });
 
     DOM.fanSelect?.addEventListener('change', () => {
@@ -717,7 +722,7 @@
             state.targetTemp = temp;
           }
         }
-        if (settings.acMode != null) state.acMode = Number(settings.acMode);
+        if (settings.acMode != null) state.acMode = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) เสมอ
         if (settings.acFan != null) state.acFan = Number(settings.acFan);
         if (settings.acPower != null) state.acPower = Number(settings.acPower);
         if (settings.acOn != null) state.acOn = Boolean(settings.acOn);
@@ -1385,7 +1390,7 @@
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
-    const m = Number(mode);
+    const m = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) ไว้ตลอดเวลา
     const f = Number(fan);
     const c = Number(complete) || 0;
     const r = Number(reset) || 0;
@@ -1700,9 +1705,10 @@
     }
 
     if (mqttData.mode !== undefined) {
-      state.acMode = Number(mqttData.mode);
-      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
-        DOM.modeSelect.value = state.acMode;
+      state.acMode = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) เสมอ
+      if (DOM.modeSelect) {
+        DOM.modeSelect.value = '0';
+        DOM.modeSelect.disabled = true;
       }
     }
 
@@ -2193,7 +2199,7 @@
       if (DOM.targetTemp) DOM.targetTemp.disabled = false;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-      if (DOM.modeSelect) DOM.modeSelect.disabled = false;
+      if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
       if (DOM.fanSelect) DOM.fanSelect.disabled = false;
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
 
@@ -2241,7 +2247,7 @@
       if (DOM.targetTemp) DOM.targetTemp.disabled = false;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-      if (DOM.modeSelect) DOM.modeSelect.disabled = false;
+      if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
       if (DOM.fanSelect) DOM.fanSelect.disabled = false;
       if (DOM.btnSendMqtt) {
         DOM.btnSendMqtt.disabled = false;
@@ -2287,7 +2293,7 @@
     if (DOM.targetTemp) DOM.targetTemp.disabled = false;
     if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
     if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-    if (DOM.modeSelect) DOM.modeSelect.disabled = false;
+    if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
     if (DOM.fanSelect) DOM.fanSelect.disabled = false;
     if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
     document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);

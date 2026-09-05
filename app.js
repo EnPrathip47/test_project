@@ -56,7 +56,7 @@
     indicators: { power: false, running: false, fault: false },
     // MQTT Remote Control (Desired & Actual State)
     acPower: 0,     // 0=OFF, 1=ON
-    acMode: 0,      // 0=AUTO, 1=COOL, 2=DRY, 3=FAN
+    acMode: 0,      // 0=AUTO (Fixed as AUTO)
     acFan: 0,       // 0=AUTO, 1=LOW, 2=MED, 3=HIGH
     esp32Online: false,
     plcOnline: false,
@@ -288,13 +288,12 @@
       }
     } else if (state.scheduleMode === 'manual' && state.schedule.enabled) {
       const now = new Date();
-      const onD = state.schedule.onDate || todayIso;
-      const offD = state.schedule.offDate || onD;
-      const { start, stop } = getScheduleRange(onD, state.schedule.onTime, offD, state.schedule.offTime);
-      if (start && stop) {
-        if (now >= start && now < stop) {
+      const offD = state.schedule.offDate || todayIso;
+      const stopDt = parseScheduleDateTime(offD, state.schedule.offTime);
+      if (stopDt) {
+        if (state.acOn && now < stopDt) {
           updateSystemState('running');
-        } else if (now >= stop) {
+        } else if (now >= stopDt) {
           updateSystemState('timeout');
         } else {
           updateSystemState('ready');
@@ -409,37 +408,58 @@
     if (!state.schedule.enabled) return;
 
     const onTimeVal = state.schedule.onTime || DOM.onTime?.value;
+    const onDateVal = state.schedule.onDate || DOM.onDate?.value || getTodayIso();
     const offTimeVal = state.schedule.offTime || DOM.offTime?.value;
-    const onDateVal = state.schedule.onDate || DOM.onDate?.value;
-    const offDateVal = state.schedule.offDate || DOM.offDate?.value;
+    const offDateVal = state.schedule.offDate || DOM.offDate?.value || getTodayIso();
 
     if (!onTimeVal || !offTimeVal) return;
 
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+    // โหมด AUTO: วนลูปอัตโนมัติทุกวัน 08:00 - 17:00
+    if (state.scheduleMode === 'auto') {
+      const todayIso = getTodayIso();
+      const { start, stop: autoStop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+      if (state.systemState === 'timeout' || state.systemState === 'stopped') {
+        if (now < start) {
+          updateSystemState('ready');
+        }
+      }
+      if (state.systemState === 'ready' || state.systemState === 'idle') {
+        if (now >= start && now < autoStop) {
+          updateSystemState('running');
+          sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+          addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (08:00) -> ส่งคำสั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+          showToast('success', `ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (08:00) — เริ่มทำงานและยิงสัญญาณ IR`);
+        }
+      } else if (state.systemState === 'running') {
+        if (now >= autoStop) {
+          updateSystemState('timeout');
+          sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
+          addLog('warning', `[Schedule] ครบเวลาเปิดเครื่องปรับอากาศ (17:00) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+          showToast('warning', `ทำงานครบเวลาแล้ว (17:00) — ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+        }
+      }
+      return;
+    }
+
+    // โหมด MANUAL: ตรวจสอบเวลาเริ่ม (Start) และครบเวลาทำงาน (Stop / TIMEOUT)
+    const start = parseScheduleDateTime(onDateVal, onTimeVal);
+    const stop = parseScheduleDateTime(offDateVal, offTimeVal);
     if (!start || !stop) return;
 
-    // โหมด AUTO: วนลูปอัตโนมัติทุกวัน — เมื่อข้ามไปวันถัดไปหรือเวลารอเริ่มรอบใหม่ ให้กลับสู่สถานะ ready เพื่อรอยิงตอน 08:00
-    if (state.scheduleMode === 'auto' && (state.systemState === 'timeout' || state.systemState === 'stopped')) {
-      if (now < start) {
-        updateSystemState('ready');
-      }
-    }
-
-    // Case 1: เมื่อถึงเวลาเริ่มทำงาน (START TIME) -> สั่งเปิดเครื่องปรับอากาศและยิง IR 10 ครั้ง
     if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
+        state.acOn = true;
         updateSystemState('running');
-        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+        sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1
         addLog('success', `[Schedule] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> ส่งคำสั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
-        showToast('success', `ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (${onTimeVal}) — เริ่มทำงานและยิงสัญญาณ IR`);
+        showToast('success', `ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (${onTimeVal}) — เริ่มทำงาน`);
       }
-    }
-    // Case 3: เมื่อครบเวลาทำงาน (TIMEOUT / COMPLETE) -> สั่งปิดเครื่องปรับอากาศและยิง IR 10 ครั้ง
-    else if (state.systemState === 'running') {
+    } else if (state.systemState === 'running') {
       if (now >= stop) {
+        state.acOn = false;
         updateSystemState('timeout');
-        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 1); // [ Complete Flag set M500 ]
-        addLog('warning', `[Schedule] ครบเวลาเปิดเครื่องปรับอากาศ (${offTimeVal}) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+        sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
+        addLog('warning', `[Schedule] ครบเวลาทำงาน (${offTimeVal}) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
         showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
       }
     }
@@ -477,13 +497,7 @@
       updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
-    DOM.offDate?.addEventListener('change', () => {
-      validateDateNotPast(DOM.offDate);
-      state.schedule.offDate = DOM.offDate.value;
-      saveSettings();
-      updateScheduleInputsState();
-      broadcastUiSync('change_input');
-    });
+
     DOM.onTime?.addEventListener('input', () => {
       state.schedule.onTime = DOM.onTime.value;
       saveSettings();
@@ -492,8 +506,15 @@
     });
     DOM.onTime?.addEventListener('change', () => {
       state.schedule.onTime = DOM.onTime.value;
-      validateTimeInterval();
       saveSettings();
+      broadcastUiSync('change_input');
+    });
+
+    DOM.offDate?.addEventListener('change', () => {
+      validateDateNotPast(DOM.offDate);
+      state.schedule.offDate = DOM.offDate.value;
+      saveSettings();
+      updateScheduleInputsState();
       broadcastUiSync('change_input');
     });
 
@@ -505,7 +526,6 @@
     });
     DOM.offTime?.addEventListener('change', () => {
       state.schedule.offTime = DOM.offTime.value;
-      validateTimeInterval();
       saveSettings();
       broadcastUiSync('change_input');
     });
@@ -516,12 +536,8 @@
       updateMqttTempDisplay();
       saveSettings();
       broadcastUiSync('change_control');
-      if (state.connected) {
-        const isAuto = (state.scheduleMode === 'auto');
-        const isRunning = (state.systemState === 'running' || state.acOn);
-        const power = (isRunning || isAuto) ? 1 : state.acPower;
-        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
-      }
+      const isRunning = (state.systemState === 'running' || state.acOn);
+      sendMqttPayload(isRunning ? 1 : 0, validVal, 0, state.acFan, 0, 0, 1, 0);
     });
     DOM.targetTemp?.addEventListener('input', () => {
       state.userModifiedTemp = true;
@@ -529,17 +545,17 @@
       broadcastUiSync('change_control');
     });
     DOM.targetTemp?.addEventListener('blur', () => {
-      getValidTargetTemp();
+      const validVal = getValidTargetTemp();
       updateMqttTempDisplay();
+      const isRunning = (state.systemState === 'running' || state.acOn);
+      sendMqttPayload(isRunning ? 1 : 0, validVal, 0, state.acFan, 0, 0, 1, 0);
     });
-
-
 
     // Temp +/- Controls
     DOM.tempMinusBtn?.addEventListener('click', () => adjustTempStep(-1));
     DOM.tempPlusBtn?.addEventListener('click', () => adjustTempStep(1));
 
-    // Temp Presets Chips
+    // Temp Presets Chips (18°C, 20°C, 22°C, 24°C, 25°C, 27°C)
     document.querySelectorAll('.temp-chip').forEach((chip) => {
       chip.addEventListener('click', (e) => {
         if (state.scheduleMode === 'none') {
@@ -551,18 +567,13 @@
       });
     });
 
-    DOM.modeSelect?.addEventListener('change', () => {
-      if (state.scheduleMode === 'none') return;
-      state.acMode = parseInt(DOM.modeSelect.value, 10);
-      state.userModifiedMode = true;
-      broadcastUiSync('change_control');
-    });
-
     DOM.fanSelect?.addEventListener('change', () => {
       if (state.scheduleMode === 'none') return;
       state.acFan = parseInt(DOM.fanSelect.value, 10);
       state.userModifiedFan = true;
       broadcastUiSync('change_control');
+      const isRunning = (state.systemState === 'running' || state.acOn);
+      sendMqttPayload(isRunning ? 1 : 0, getValidTargetTemp(), 0, state.acFan, 0, 0, 1, 0);
     });
 
     DOM.btnSendMqtt?.addEventListener('click', sendMqttCommandFromUI);
@@ -572,8 +583,6 @@
     DOM.modeAutoBtn?.addEventListener('click', () => setScheduleMode('auto'));
     DOM.modeManualBtn?.addEventListener('click', () => setScheduleMode('manual'));
   }
-
-
 
   function adjustTempStep(delta) {
     if (state.scheduleMode === 'none') {
@@ -618,7 +627,9 @@
     if (isUserAction) {
       state.userModifiedTemp = true;
       broadcastUiSync('change_control');
-      showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว — กรุณากดปุ่ม "ส่งคำสั่งรีโมท (SEND MQTT)" เพื่อยิงสัญญาณ IR`);
+      const isRunning = (state.systemState === 'running' || state.acOn);
+      sendMqttPayload(isRunning ? 1 : 0, validVal, 0, state.acFan, 0, 0, 1, 0);
+      showToast('success', `ส่งค่าอุณหภูมิ ${validVal}°C ไปยัง PLC แล้ว`);
     }
   }
 
@@ -652,23 +663,19 @@
     return rawVal;
   }
 
-  // ตรวจสอบความถูกต้องของเวลาปิด ต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป
   function validateTimeInterval() {
     if (state.scheduleMode !== 'manual') return true;
-    const onTimeVal = DOM.onTime?.value;
-    const offTimeVal = DOM.offTime?.value;
-    const onDateVal = DOM.onDate?.value || getTodayIso();
-    const offDateVal = DOM.offDate?.value || onDateVal;
-
+    const onTimeVal = DOM.onTime?.value || state.schedule.onTime;
+    const offTimeVal = DOM.offTime?.value || state.schedule.offTime;
+    const onDateVal = DOM.onDate?.value || state.schedule.onDate || getTodayIso();
+    const offDateVal = DOM.offDate?.value || state.schedule.offDate || getTodayIso();
     if (!onTimeVal || !offTimeVal) return true;
 
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
-    if (start && stop) {
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('warning', 'เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
-        return false;
-      }
+    const start = parseScheduleDateTime(onDateVal, onTimeVal);
+    const stop = parseScheduleDateTime(offDateVal, offTimeVal);
+    if (start && stop && stop.getTime() <= start.getTime()) {
+      showToast('warning', 'เวลาปิดเครื่องปรับอากาศต้องมากกว่าเวลาเริ่มเปิด');
+      return false;
     }
     return true;
   }
@@ -709,15 +716,15 @@
             state.targetTemp = temp;
           }
         }
-        if (settings.acMode != null) state.acMode = Number(settings.acMode);
+        state.acMode = 0; // Fixed as AUTO
         if (settings.acFan != null) state.acFan = Number(settings.acFan);
         if (settings.acPower != null) state.acPower = Number(settings.acPower);
         if (settings.acOn != null) state.acOn = Boolean(settings.acOn);
 
         if (state.scheduleMode === 'manual') {
           state.schedule.onDate = settings.onDate || '';
-          state.schedule.offDate = settings.offDate || '';
           state.schedule.onTime = settings.onTime || '';
+          state.schedule.offDate = settings.offDate || '';
           state.schedule.offTime = settings.offTime || '';
           state.schedule.enabled = Boolean(settings.scheduleEnabled);
           if (settings.systemState) {
@@ -726,8 +733,8 @@
         } else if (state.scheduleMode === 'auto') {
           const todayIso = getTodayIso();
           state.schedule.onDate = todayIso;
-          state.schedule.offDate = todayIso;
           state.schedule.onTime = '08:00';
+          state.schedule.offDate = todayIso;
           state.schedule.offTime = '17:00';
           state.schedule.enabled = true;
           if (settings.systemState) {
@@ -737,8 +744,8 @@
           // In NONE mode:
           state.schedule.enabled = false;
           state.schedule.onDate = '';
-          state.schedule.offDate = '';
           state.schedule.onTime = '';
+          state.schedule.offDate = '';
           state.schedule.offTime = '';
           state.systemState = 'idle';
         }
@@ -761,7 +768,7 @@
         systemState: state.systemState,
         acOn: state.acOn,
         acPower: state.acPower,
-        acMode: state.acMode,
+        acMode: 0, // Fixed as AUTO
         acFan: state.acFan
       };
       localStorage.setItem('airCandySettings', JSON.stringify(settings));
@@ -871,16 +878,16 @@
     if (isNone) {
       state.schedule.enabled = false;
       state.schedule.onDate = '';
-      state.schedule.offDate = '';
       state.schedule.onTime = '';
+      state.schedule.offDate = '';
       state.schedule.offTime = '';
       state.acOn = false;
       state.acPower = 0;
 
       // เคลียร์ค่า input และ display ทั้งหมดให้ว่างเปล่า ไม่มีค่าเดิมค้าง
       if (DOM.onDate) { DOM.onDate.value = ''; DOM.onDate.disabled = true; }
-      if (DOM.offDate) { DOM.offDate.value = ''; DOM.offDate.disabled = true; }
       if (DOM.onTime) { DOM.onTime.value = ''; DOM.onTime.disabled = true; }
+      if (DOM.offDate) { DOM.offDate.value = ''; DOM.offDate.disabled = true; }
       if (DOM.offTime) { DOM.offTime.value = ''; DOM.offTime.disabled = true; }
       if (DOM.targetTemp) { DOM.targetTemp.value = ''; DOM.targetTemp.disabled = true; DOM.targetTemp.placeholder = '--'; }
       if (DOM.mqttTempDisplay) DOM.mqttTempDisplay.textContent = '--';
@@ -900,10 +907,10 @@
         updateSystemState('idle');
       }
     } else if (isAuto) {
-      if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
-      if (DOM.offTime) { DOM.offTime.value = '17:00'; DOM.offTime.disabled = true; }
       const todayIso = getTodayIso();
+      if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
       if (DOM.onDate) { DOM.onDate.value = todayIso; DOM.onDate.disabled = true; }
+      if (DOM.offTime) { DOM.offTime.value = '17:00'; DOM.offTime.disabled = true; }
       if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
       if (DOM.targetTemp) {
         DOM.targetTemp.disabled = false;
@@ -913,8 +920,8 @@
       updateMqttTempDisplay();
 
       state.schedule.onDate = todayIso;
-      state.schedule.offDate = todayIso;
       state.schedule.onTime = '08:00';
+      state.schedule.offDate = todayIso;
       state.schedule.offTime = '17:00';
       state.schedule.enabled = true;
 
@@ -922,7 +929,7 @@
       const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
       if (start && stop && now >= start && now < stop) {
         updateSystemState('running');
-        sendMqttPayload(1, getValidTargetTemp(), state.acMode, state.acFan);
+        sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan);
       } else {
         updateSystemState('ready');
       }
@@ -933,13 +940,13 @@
           DOM.onDate.disabled = false;
           DOM.onDate.value = state.schedule.onDate || '';
         }
-        if (DOM.offDate) {
-          DOM.offDate.disabled = false;
-          DOM.offDate.value = state.schedule.offDate || '';
-        }
         if (DOM.onTime) {
           DOM.onTime.disabled = false;
           DOM.onTime.value = state.schedule.onTime || '';
+        }
+        if (DOM.offDate) {
+          DOM.offDate.disabled = false;
+          DOM.offDate.value = state.schedule.offDate || '';
         }
         if (DOM.offTime) {
           DOM.offTime.disabled = false;
@@ -960,13 +967,13 @@
           DOM.onDate.value = state.schedule.onDate || '';
           DOM.onDate.disabled = true;
         }
-        if (DOM.offDate) {
-          DOM.offDate.value = state.schedule.offDate || '';
-          DOM.offDate.disabled = true;
-        }
         if (DOM.onTime) {
           DOM.onTime.value = state.schedule.onTime || '';
           DOM.onTime.disabled = true;
+        }
+        if (DOM.offDate) {
+          DOM.offDate.value = state.schedule.offDate || '';
+          DOM.offDate.disabled = true;
         }
         if (DOM.offTime) {
           DOM.offTime.value = state.schedule.offTime || '';
@@ -982,8 +989,9 @@
         const now = new Date();
         const todayIso = getTodayIso();
         const onD = state.schedule.onDate || todayIso;
-        const offD = state.schedule.offDate || onD;
-        const { start, stop } = getScheduleRange(onD, state.schedule.onTime, offD, state.schedule.offTime);
+        const offD = state.schedule.offDate || todayIso;
+        const start = parseScheduleDateTime(onD, state.schedule.onTime);
+        const stop = parseScheduleDateTime(offD, state.schedule.offTime);
         if (start && stop) {
           if (now >= start && now < stop) {
             updateSystemState('running');
@@ -1068,12 +1076,12 @@
       scheduleMode: state.scheduleMode,
       schedule: { ...state.schedule },
       targetTemp: getValidTargetTemp(),
-      acMode: state.acMode,
+      acMode: 0,
       acFan: state.acFan,
       systemState: state.systemState,
       onDate: DOM.onDate?.value || state.schedule.onDate || '',
-      offDate: DOM.offDate?.value || state.schedule.offDate || '',
       onTime: DOM.onTime?.value || state.schedule.onTime || '',
+      offDate: DOM.offDate?.value || state.schedule.offDate || '',
       offTime: DOM.offTime?.value || state.schedule.offTime || '',
       ...extraData
     };
@@ -1101,13 +1109,13 @@
       state.acOn = false;
       state.schedule.enabled = false;
       state.schedule.onTime = '';
-      state.schedule.offTime = '';
       state.schedule.onDate = '';
+      state.schedule.offTime = '';
       state.schedule.offDate = '';
 
       if (DOM.onTime) DOM.onTime.value = '';
-      if (DOM.offTime) DOM.offTime.value = '';
       if (DOM.onDate) DOM.onDate.value = '';
+      if (DOM.offTime) DOM.offTime.value = '';
       if (DOM.offDate) DOM.offDate.value = '';
 
       state.scheduleMode = 'none';
@@ -1129,13 +1137,13 @@
       state.schedule.onDate = data.onDate;
       if (DOM.onDate && document.activeElement !== DOM.onDate) DOM.onDate.value = data.onDate;
     }
-    if (data.offDate !== undefined) {
-      state.schedule.offDate = data.offDate;
-      if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = data.offDate;
-    }
     if (data.onTime !== undefined) {
       state.schedule.onTime = data.onTime;
       if (DOM.onTime && document.activeElement !== DOM.onTime) DOM.onTime.value = data.onTime;
+    }
+    if (data.offDate !== undefined) {
+      state.schedule.offDate = data.offDate;
+      if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = data.offDate;
     }
     if (data.offTime !== undefined) {
       state.schedule.offTime = data.offTime;
@@ -1168,10 +1176,7 @@
         });
       }
     }
-    if (data.acMode !== undefined) {
-      state.acMode = parseInt(data.acMode, 10);
-      if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) DOM.modeSelect.value = state.acMode;
-    }
+    state.acMode = 0; // Fixed as AUTO
     if (data.acFan !== undefined) {
       state.acFan = parseInt(data.acFan, 10);
       if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) DOM.fanSelect.value = state.acFan;
@@ -1397,30 +1402,26 @@
     }
     if (DOM.mqttErrorMsg) DOM.mqttErrorMsg.textContent = '';
 
-    const now = new Date();
-
-    // Calculate Start Date (D500-D504) and Stop Date (D600-D604)
-    let startDt = now;
+    // Calculate Start Date and Stop Date for Manual / Scheduled mode
+    let startDt = null;
     let stopDt = null;
 
     const onTimeVal = state.schedule.onTime || DOM.onTime?.value;
+    const onDateVal = state.schedule.onDate || DOM.onDate?.value || getTodayIso();
     const offTimeVal = state.schedule.offTime || DOM.offTime?.value;
-    const onDateVal = state.schedule.onDate || DOM.onDate?.value;
-    const offDateVal = state.schedule.offDate || DOM.offDate?.value;
+    const offDateVal = state.schedule.offDate || DOM.offDate?.value || getTodayIso();
 
-    if (onTimeVal && offTimeVal) {
-      const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
-      if (start) startDt = start;
-      if (stop) stopDt = stop;
+    if (onTimeVal && state.scheduleMode !== 'auto') {
+      startDt = parseScheduleDateTime(onDateVal, onTimeVal);
     }
-
-    // In Auto mode OR when includeStopDate is false: DO NOT send Stop Date (D500-D504)!
-    const sendStopDate = includeStopDate && (state.scheduleMode !== 'auto');
+    if (offTimeVal && state.scheduleMode !== 'auto' && includeStopDate) {
+      stopDt = parseScheduleDateTime(offDateVal, offTimeVal);
+    }
 
     const payloadObj = {
       power: p,
       temperature: t,
-      mode: m,
+      mode: 0, // Fixed as AUTO (0)
       fan: f,
       complete: c,
       reset: r,
@@ -1433,21 +1434,14 @@
       mode_manual: mm,
       schedule_mode: state.scheduleMode,
 
-      // D500 - D504: Start DateTime
-      start_year: startDt.getFullYear(),
-      start_month: startDt.getMonth() + 1,
-      start_day: startDt.getDate(),
-      start_hour: startDt.getHours(),
-      start_minute: startDt.getMinutes(),
+      // Start DateTime (ประมวลผลบนเว็บ/ESP32 โดยไม่ส่ง D600-D605 ไป PLC)
+      start_year: startDt ? startDt.getFullYear() : 0,
+      start_month: startDt ? startDt.getMonth() + 1 : 0,
+      start_day: startDt ? startDt.getDate() : 0,
+      start_hour: startDt ? startDt.getHours() : 0,
+      start_minute: startDt ? startDt.getMinutes() : 0,
 
-      // Legacy fallback
-      year: startDt.getFullYear(),
-      month: startDt.getMonth() + 1,
-      day: startDt.getDate(),
-      hour: startDt.getHours(),
-      minute: startDt.getMinutes(),
-
-      // D600 - D604: Stop DateTime
+      // D500 - D504: Stop DateTime (เวลาปิดเครื่องบน PLC)
       stop_year: stopDt ? stopDt.getFullYear() : 0,
       stop_month: stopDt ? stopDt.getMonth() + 1 : 0,
       stop_day: stopDt ? stopDt.getDate() : 0,
@@ -1456,9 +1450,8 @@
     };
     const payloadStr = JSON.stringify(payloadObj);
 
-    const modeNames = ['AUTO', 'COOL', 'DRY', 'FAN'];
     const fanNames = ['AUTO', 'LOW', 'MEDIUM', 'HIGH'];
-    const summary = `Power=${p ? 'ON' : 'OFF'} Temp=${t}°C Mode=${modeNames[m]} Fan=${fanNames[f]}`;
+    const summary = `Power=${p ? 'ON' : 'OFF'} Temp=${t}°C Mode=AUTO Fan=${fanNames[f]}`;
 
     // Reset user pending modification flags after sending command
     state.userModifiedPower = false;
@@ -1525,26 +1518,23 @@
   function isCurrentlyInWorkingWindow() {
     if (state.scheduleMode === 'none') return false;
 
-    let onTimeVal = state.schedule.onTime || DOM.onTime?.value;
-    let offTimeVal = state.schedule.offTime || DOM.offTime?.value;
-    let onDateVal = state.schedule.onDate || DOM.onDate?.value;
-    let offDateVal = state.schedule.offDate || DOM.offDate?.value;
-
     if (state.scheduleMode === 'auto') {
-      onTimeVal = '08:00';
-      offTimeVal = '17:00';
       const todayIso = getTodayIso();
-      onDateVal = todayIso;
-      offDateVal = todayIso;
+      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+      if (!start || !stop) return false;
+      const now = new Date();
+      return (now >= start && now < stop);
     }
 
-    if (!onTimeVal || !offTimeVal) return false;
+    const offTimeVal = state.schedule.offTime || DOM.offTime?.value;
+    const offDateVal = state.schedule.offDate || DOM.offDate?.value || getTodayIso();
+    if (!offTimeVal) return (state.systemState === 'running' || state.acOn);
 
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
-    if (!start || !stop) return false;
+    const stop = parseScheduleDateTime(offDateVal, offTimeVal);
+    if (!stop) return (state.systemState === 'running' || state.acOn);
 
     const now = new Date();
-    return (now >= start && now < stop);
+    return (now < stop);
   }
 
   function sendMqttCommandFromUI() {
@@ -1560,7 +1550,7 @@
     const inWorkingWindow = isCurrentlyInWorkingWindow();
     const isRunning = (state.systemState === 'running' || state.acOn) && inWorkingWindow;
     const temp = getValidTargetTemp();
-    const mode = state.acMode;
+    const mode = 0; // Fixed as AUTO
     const fan = state.acFan;
 
     if (isRunning) {
@@ -1879,12 +1869,6 @@
     updateControlButtons();
   }
 
-  function isScheduleSet() {
-    const onT = state.schedule.onTime || DOM.onTime?.value;
-    const offT = state.schedule.offTime || DOM.offTime?.value;
-    return Boolean(onT && offT && (state.schedule.enabled || (state.schedule.onDate && state.schedule.offDate)));
-  }
-
   function updateControlButtons() {
     const isNone = (state.scheduleMode === 'none');
     const isAuto = (state.scheduleMode === 'auto');
@@ -1892,10 +1876,10 @@
 
     // ตรวจสอบความถูกต้องของการกรอกเวลาในโหมด MANUAL
     const onTimeVal = DOM.onTime?.value || state.schedule.onTime;
-    const offTimeVal = DOM.offTime?.value || state.schedule.offTime;
     const onDateVal = DOM.onDate?.value || state.schedule.onDate;
+    const offTimeVal = DOM.offTime?.value || state.schedule.offTime;
     const offDateVal = DOM.offDate?.value || state.schedule.offDate;
-    const hasValidTimes = Boolean(onTimeVal && offTimeVal && onDateVal && offDateVal);
+    const hasValidTimes = Boolean(onTimeVal && onDateVal && offTimeVal && offDateVal);
 
     // ──────────────────────────────────────────────────────────────
     // 1. สถานะ STOPPED หรือ TIMEOUT (ระบบล็อก ต้องกดรีเซทเท่านั้น)
@@ -1918,8 +1902,8 @@
 
       // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
       if (DOM.onDate) DOM.onDate.disabled = true;
-      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
       if (DOM.targetTemp) DOM.targetTemp.disabled = true;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
@@ -1939,8 +1923,8 @@
     // ──────────────────────────────────────────────────────────────
     if (isNone) {
       if (DOM.onDate) DOM.onDate.disabled = true;
-      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
       if (DOM.targetTemp) DOM.targetTemp.disabled = true;
@@ -1982,8 +1966,8 @@
     // ──────────────────────────────────────────────────────────────
     if (isAuto) {
       if (DOM.onDate) DOM.onDate.disabled = true;
-      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.onTime) DOM.onTime.disabled = true;
+      if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
       // เปิดให้ปรับอุณหภูมิและส่งคำสั่งเครื่องปรับอากาศได้
@@ -2043,14 +2027,11 @@
     // การล็อกเวลา: เมื่อบันทึกค่าแล้ว (state.schedule.enabled == true) จะล็อกทันทีจนกว่าจะกดรีเซท
     const isTimeLocked = state.schedule.enabled;
     if (DOM.onDate) DOM.onDate.disabled = isTimeLocked;
-    if (DOM.offDate) DOM.offDate.disabled = isTimeLocked;
     if (DOM.onTime) DOM.onTime.disabled = isTimeLocked;
+    if (DOM.offDate) DOM.offDate.disabled = isTimeLocked;
     if (DOM.offTime) DOM.offTime.disabled = isTimeLocked;
 
     // ขั้นที่ 1 & 2: ปุ่มบันทึกค่า (btnSave)
-    // - ถ้ายังไม่ตั้งค่าเวลาครบ (hasValidTimes == false): ล็อก (disabled = true)
-    // - ถ้าตั้งเวลาเสร็จแล้ว (hasValidTimes == true) และยังไม่ได้บันทึก (!state.schedule.enabled): ปลดล็อกให้กดบันทึกค่าได้!
-    // - พอบันทึกค่าเสร็จแล้ว (state.schedule.enabled == true): ล็อก (disabled = true)
     if (DOM.btnSave) {
       if (!hasValidTimes) {
         DOM.btnSave.disabled = true;
@@ -2062,12 +2043,10 @@
         DOM.btnSave.disabled = true;
         if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'บันทึกเวลาแล้ว';
       }
-      DOM.btnSave.title = isTimeLocked ? 'บันทึกเวลาเรียบร้อยแล้ว (กดรีเซทเพื่อเปลี่ยนค่าใหม่)' : (hasValidTimes ? 'กดเพื่อบันทึกค่า' : 'กรุณาตั้งเวลาให้ครบ');
+      DOM.btnSave.title = isTimeLocked ? 'บันทึกเวลาเรียบร้อยแล้ว (กดรีเซทเพื่อเปลี่ยนค่าใหม่)' : (hasValidTimes ? 'กดเพื่อบันทึกค่า' : 'กรุณาตั้งเวลาเปิด-ปิดให้ครบ');
     }
 
     // ขั้นที่ 3: ปุ่มเริ่มทำงาน (btnStart)
-    // - พอบันทึกค่าเสร็จ (state.schedule.enabled == true) และยังไม่ running: ให้กดปุ่มเริ่มทำงานได้!
-    // - ถ้ายังไม่บันทึกค่า หรือกำลัง running: ล็อก (disabled = true)
     const canStart = state.schedule.enabled && (state.systemState !== 'running');
     if (DOM.btnStart) {
       DOM.btnStart.disabled = !canStart;
@@ -2083,8 +2062,6 @@
     }
 
     // ขั้นที่ 4: ปุ่มหยุดทำงาน (btnStop)
-    // - เมื่อเครื่องปรับอากาศถึงเวลาทำงานที่ตั้งไว้ (state.systemState === 'running'): ถึงจะสามารถกดปุ่มหยุดการทำงานได้!
-    // - นอกนั้น: ล็อก (disabled = true)
     if (DOM.btnStop) {
       DOM.btnStop.disabled = (state.systemState !== 'running');
     }
@@ -2138,39 +2115,31 @@
     const isAutoMode = (state.scheduleMode === 'auto');
     const todayIso = getTodayIso();
 
-    let onDateVal, offDateVal, onTimeVal, offTimeVal;
+    let onDateVal, onTimeVal, offDateVal, offTimeVal;
 
     if (isAutoMode) {
-      // Auto mode: fixed 08:00-17:00 using today's date
       onDateVal = todayIso;
-      offDateVal = todayIso;
       onTimeVal = '08:00';
+      offDateVal = todayIso;
       offTimeVal = '17:00';
     } else {
-      // Manual mode: use user input
       onDateVal = DOM.onDate?.value || todayIso;
-      offDateVal = DOM.offDate?.value || onDateVal;
       onTimeVal = DOM.onTime?.value;
+      offDateVal = DOM.offDate?.value || todayIso;
       offTimeVal = DOM.offTime?.value;
     }
 
     const targetTemp = getValidTargetTemp();
 
     if (!onTimeVal || !offTimeVal) {
-      showToast('error', 'กรุณากำหนดเวลาเปิดและเวลาปิดเครื่องปรับอากาศ');
-      return;
-    }
-
-    const onIso = parseThaiDateToIso(onDateVal);
-    const offIso = parseThaiDateToIso(offDateVal);
-    if (offIso < onIso) {
-      showToast('error', 'วันที่ปิดเครื่องปรับอากาศต้องไม่เกิดขึ้นก่อนวันที่เปิดเครื่องปรับอากาศ');
+      showToast('error', 'กรุณากำหนดเวลาเปิดและเวลาปิดเครื่องปรับอากาศให้ครบถ้วน');
       return;
     }
 
     const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
     const now = new Date();
-    const { start, stop } = getScheduleRange(onDateVal, onTimeVal, offDateVal, offTimeVal);
+    const start = parseScheduleDateTime(onDateVal, onTimeVal);
+    const stop = parseScheduleDateTime(offDateVal, offTimeVal);
 
     if (!start || !stop) {
       showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
@@ -2178,24 +2147,12 @@
     }
 
     if (!isAutoMode) {
-      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
-      if (start.getTime() < now.getTime() - 10000) {
-        showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
+      if (stop.getTime() <= start.getTime()) {
+        showToast('error', 'เวลาปิดเครื่องปรับอากาศต้องมากกว่าเวลาเริ่มเปิด');
         return;
       }
-
-      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
       if (stop.getTime() <= now.getTime()) {
         showToast('error', `ห้ามตั้งเวลาปิดเครื่องปรับอากาศย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
-        return;
-      }
-
-      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถบันทึกได้! เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
         state.schedule.enabled = false;
         return;
       }
@@ -2209,20 +2166,25 @@
     state.schedule.enabled = true;
     saveSettings();
 
-    // ในโหมด MANUAL: ส่งค่า Modbus (D500-D504 + M100=ON + M42=ON) เมื่อกดปุ่มบันทึกค่า
+    // ในโหมด MANUAL: ส่งค่า Modbus (D500-D504 Stop Time + M100=ON + M42=ON) เมื่อกดปุ่มบันทึกค่า
     if (!isAutoMode) {
-      sendMqttPayload(0, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, 0, 1, true, 1);
+      sendMqttPayload(0, targetTemp, 0, state.acFan, 0, 0, 0, 0, 0, 0, 1, true, 1);
     }
 
-    // บันทึกค่าสำเร็จ -> ไปสถานะ READY (ไฟเขียวกระพริบ) เสมอ
-    state.acOn = false;
-    updateSystemState('ready');
-    const isFutureDate = (onIso > todayIso);
-    const displayWait = isFutureDate ? `${formatDisplayDate(onDateVal)} ${onTimeVal}` : onTimeVal;
+    // บันทึกค่าสำเร็จ -> ตรวจสอบว่าถึงเวลาเริ่มหรือยัง
+    if (now >= start && now < stop) {
+      state.acOn = true;
+      updateSystemState('running');
+      sendMqttPayload(1, targetTemp, 0, state.acFan, 0, 0, 0, 0, 1);
+      showToast('success', `${modeLabel} ถึงเวลาเริ่มพอดี — เปิดเครื่องปรับอากาศและยิงสัญญาณ IR (${targetTemp}°C)`);
+    } else {
+      state.acOn = false;
+      updateSystemState('ready');
+      addLog('success', `${modeLabel} ตั้งเวลาสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C)`);
+      showToast('success', `${modeLabel} บันทึกเวลาสำเร็จ — รอถึงเวลาเปิด (${onTimeVal}) หรือกดเริ่มทำงาน`);
+    }
 
     broadcastUiSync('save_schedule');
-    addLog('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ: ${formatDisplayDate(onDateVal)} ${onTimeVal} - ${formatDisplayDate(offDateVal)} ${offTimeVal} (${targetTemp}°C) (ไฟเขียวกระพริบ รอถึงเวลาเริ่ม)`);
-    showToast('success', `${modeLabel} ตั้งเวลาล่วงหน้าสำเร็จ — อุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
   }
 
   function startAC() {
@@ -2243,35 +2205,27 @@
     }
     const todayIso = getTodayIso();
 
-    let onDateVal, offDateVal, onTimeVal, offTimeVal;
+    let onDateVal, onTimeVal, offDateVal, offTimeVal;
 
     if (isAutoMode) {
       onDateVal = todayIso;
-      offDateVal = todayIso;
       onTimeVal = '08:00';
+      offDateVal = todayIso;
       offTimeVal = '17:00';
     } else {
       onDateVal = state.schedule.onDate || DOM.onDate?.value || todayIso;
-      offDateVal = state.schedule.offDate || DOM.offDate?.value || onDateVal;
       onTimeVal = state.schedule.onTime || DOM.onTime?.value;
+      offDateVal = state.schedule.offDate || DOM.offDate?.value || todayIso;
       offTimeVal = state.schedule.offTime || DOM.offTime?.value;
     }
 
     const targetTemp = getValidTargetTemp();
-
     const finalOnDate = onDateVal || todayIso;
-    const finalOffDate = offDateVal || finalOnDate;
-
-    const onIso = parseThaiDateToIso(finalOnDate);
-    const offIso = parseThaiDateToIso(finalOffDate);
-    if (offIso < onIso) {
-      showToast('error', 'วันที่ปิดเครื่องปรับอากาศต้องไม่เกิดขึ้นก่อนวันที่เปิดเครื่องปรับอากาศ');
-      return;
-    }
-
+    const finalOffDate = offDateVal || todayIso;
     const modeLabel = isAutoMode ? '[AUTO]' : '[MANUAL]';
     const now = new Date();
-    const { start, stop } = getScheduleRange(finalOnDate, onTimeVal, finalOffDate, offTimeVal);
+    const start = parseScheduleDateTime(finalOnDate, onTimeVal);
+    const stop = parseScheduleDateTime(finalOffDate, offTimeVal);
 
     if (!start || !stop) {
       showToast('error', 'รูปแบบเวลาไม่ถูกต้อง กรุณากำหนดเวลาใหม่');
@@ -2279,55 +2233,31 @@
     }
 
     if (!isAutoMode) {
-      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
-      if (start.getTime() < now.getTime() - 10000) {
-        showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
+      if (stop.getTime() <= start.getTime()) {
+        showToast('error', 'เวลาปิดเครื่องปรับอากาศต้องมากกว่าเวลาเริ่มเปิด');
         return;
       }
-
-      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
       if (stop.getTime() <= now.getTime()) {
-        showToast('error', `ห้ามตั้งเวลาปิดเครื่องปรับอากาศย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
-        state.schedule.enabled = false;
-        return;
-      }
-
-      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
-      const diffMs = stop.getTime() - start.getTime();
-      if (diffMs < 60 * 1000) {
-        showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
+        showToast('error', `เวลาปิดเครื่องปรับอากาศ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
     }
 
-    // ผ่านการตรวจสอบเรียบร้อยแล้ว -> เปิดการใช้งานตั้งเวลาและบันทึกค่า
     state.schedule.onDate = finalOnDate;
     state.schedule.onTime = onTimeVal;
     state.schedule.offDate = finalOffDate;
     state.schedule.offTime = offTimeVal;
     state.schedule.enabled = true;
 
-    const isFutureDate = (onIso > todayIso);
-    const displayWait = isFutureDate ? `${formatDisplayDate(finalOnDate)} ${onTimeVal}` : onTimeVal;
-
-    // กดเริ่มทำงานสำเร็จ -> ส่งคำสั่งเปิดเครื่องปรับอากาศ M5=ON และ Modbus D10-D14
-    if (now >= start) {
-      state.acOn = true;
-      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
-      startIrTransmissionLock(5500);
-      updateSystemState('running');
-      broadcastUiSync('start_ac');
-      addLog('success', `${modeLabel} กดเริ่มทำงาน — อยู่ในช่วงเวลา (${onTimeVal}-${offTimeVal}) สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
-      showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${onTimeVal}-${offTimeVal})`);
-    } else {
-      state.acOn = false;
-      updateSystemState('ready');
-      broadcastUiSync('start_ac');
-      addLog('info', `${modeLabel} กดเริ่มทำงานแล้ว — ยังไม่ถึงเวลา (${displayWait}) ตั้งค่า ${targetTemp}°C (ไฟเขียวกระพริบรอเริ่มทำงานตามเวลา)`);
-      showToast('info', `${modeLabel} กดเริ่มทำงานแล้ว — ตั้งอุณหภูมิ ${targetTemp}°C (รอถึงเวลา ${displayWait})`);
-    }
+    // กดเริ่มทำงาน -> ส่งคำสั่งเปิดเครื่องปรับอากาศ M5=ON และ D10=1, D11=Temp, ยิง IR 10x
+    state.acOn = true;
+    sendMqttPayload(1, targetTemp, 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+    startIrTransmissionLock(5500);
+    updateSystemState('running');
+    broadcastUiSync('start_ac');
+    addLog('success', `${modeLabel} กดเริ่มทำงาน — สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
+    showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${targetTemp}°C)`);
   }
 
   function stopAC() {
@@ -2337,7 +2267,7 @@
       return;
     }
     state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON & IR 10x OFF)
+    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON & IR 10x OFF)
     startIrTransmissionLock(5500);
     updateSystemState('stopped');
     broadcastUiSync('stop_ac');
@@ -2349,13 +2279,13 @@
     state.acOn = false;
     state.schedule.enabled = false;
     state.schedule.onTime = '';
-    state.schedule.offTime = '';
     state.schedule.onDate = '';
+    state.schedule.offTime = '';
     state.schedule.offDate = '';
 
     if (DOM.onTime) DOM.onTime.value = '';
-    if (DOM.offTime) DOM.offTime.value = '';
     if (DOM.onDate) DOM.onDate.value = '';
+    if (DOM.offTime) DOM.offTime.value = '';
     if (DOM.offDate) DOM.offDate.value = '';
 
     // เมื่อกดรีเซท ให้สลับเด้งกลับสู่โหมด NONE MODE ทันที (ทั้งจาก AUTO และ MANUAL)
@@ -2370,7 +2300,7 @@
     state.systemState = 'idle';
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
-    sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
+    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 1);
     saveSettings();
 
     // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
@@ -2402,13 +2332,13 @@
     state.acOn = false;
     state.schedule.enabled = false;
     state.schedule.onTime = '';
-    state.schedule.offTime = '';
     state.schedule.onDate = '';
+    state.schedule.offTime = '';
     state.schedule.offDate = '';
 
     if (DOM.onTime) DOM.onTime.value = '';
-    if (DOM.offTime) DOM.offTime.value = '';
     if (DOM.onDate) DOM.onDate.value = '';
+    if (DOM.offTime) DOM.offTime.value = '';
     if (DOM.offDate) DOM.offDate.value = '';
 
     updateSystemState('idle');
@@ -2447,7 +2377,7 @@
     const data = {
       power: state.acOn ? 1 : 0,
       temperature: state.targetTemp,
-      mode: state.acMode,
+      mode: 0,
       fan: state.acFan,
       esp32_online: true,
       plc_online: false,

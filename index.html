@@ -84,7 +84,7 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 1</div>
+          <div class="sensor-card__label">เซนเซอร์ 1 (D0)</div>
           <div class="sensor-card__location">Indoor (ภายในห้อง)</div>
         </div>
         <!-- Sensor 2 -->
@@ -99,7 +99,7 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 2</div>
+          <div class="sensor-card__label">เซนเซอร์ 2 (D1)</div>
           <div class="sensor-card__location">Outdoor (ภายนอก)</div>
         </div>
         <!-- Sensor 3 (อินเวอร์เตอร์) -->
@@ -114,7 +114,7 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 3</div>
+          <div class="sensor-card__label">เซนเซอร์ 3 (D2)</div>
           <div class="sensor-card__location">อินเวอร์เตอร์</div>
         </div>
       </div>
@@ -232,7 +232,7 @@
 
           <div class="control-card__body">
             <div class="schedule-grid">
-              <!-- เปิดเครื่องปรับอากาศ (ON) -->
+              <!-- เปิดเครื่องปรับอากาศ (ON / Start Time) -->
               <div class="schedule-group" id="scheduleGroupOn">
                 <div class="schedule-group__title">🟢 เปิดเครื่องปรับอากาศ (ON)</div>
                 <div class="schedule-inputs">
@@ -252,7 +252,7 @@
                 </div>
               </div>
 
-              <!-- ปิดเครื่องปรับอากาศ (OFF) -->
+              <!-- ปิดเครื่องปรับอากาศ (OFF / Stop Time D500-D504) -->
               <div class="schedule-group" id="scheduleGroupOff">
                 <div class="schedule-group__title">🔴 ปิดเครื่องปรับอากาศ (OFF)</div>
                 <div class="schedule-inputs">
@@ -323,11 +323,8 @@
                   <!-- Mode -->
                   <div class="mqtt-field">
                     <label class="mqtt-field__label" for="modeSelect">🌀 Mode</label>
-                    <select class="mqtt-select" id="modeSelect" disabled>
-                      <option value="0">AUTO</option>
-                      <option value="1" selected>COOL</option>
-                      <option value="2">DRY</option>
-                      <option value="3">FAN</option>
+                    <select class="mqtt-select" id="modeSelect" disabled title="โหมดแอร์ฟิกซ์เป็น AUTO">
+                      <option value="0" selected>AUTO</option>
                     </select>
                   </div>
                   <!-- Fan -->

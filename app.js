@@ -56,7 +56,7 @@
     indicators: { power: false, running: false, fault: false },
     // MQTT Remote Control (Desired & Actual State)
     acPower: 0,     // 0=OFF, 1=ON
-    acMode: 0,      // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) ไว้ตลอดเวลา
+    acMode: 0,      // 0=AUTO, 1=COOL, 2=DRY, 3=FAN
     acFan: 0,       // 0=AUTO, 1=LOW, 2=MED, 3=HIGH
     esp32Online: false,
     plcOnline: false,
@@ -260,20 +260,6 @@
     scheduleGroupOff: document.getElementById('scheduleGroupOff'),
     onDateField: document.getElementById('onDateField'),
     offDateField: document.getElementById('offDateField'),
-
-    // PLC Hardware I/O LEDs
-    ledX0: document.getElementById('ledX0'),
-    ledX1: document.getElementById('ledX1'),
-    ledX2: document.getElementById('ledX2'),
-    ledY0: document.getElementById('ledY0'),
-    ledY1: document.getElementById('ledY1'),
-    ledY2: document.getElementById('ledY2'),
-    ledM5: document.getElementById('ledM5'),
-    ledM6: document.getElementById('ledM6'),
-    ledM7: document.getElementById('ledM7'),
-    ledM8: document.getElementById('ledM8'),
-    ledM42: document.getElementById('ledM42'),
-    ledM500: document.getElementById('ledM500'),
   };
 
   // ── Initialize ──
@@ -318,12 +304,6 @@
       }
     } else {
       updateSystemState(state.systemState || 'idle');
-    }
-
-    state.acMode = 0;
-    if (DOM.modeSelect) {
-      DOM.modeSelect.value = '0';
-      DOM.modeSelect.disabled = true;
     }
 
     updateMqttStatusUI();
@@ -572,9 +552,10 @@
     });
 
     DOM.modeSelect?.addEventListener('change', () => {
-      DOM.modeSelect.value = '0';
-      state.acMode = 0;
-      showToast('info', 'โหมดรีโมทถูกฟิกซ์เป็น AUTO ไว้ตลอดเวลา');
+      if (state.scheduleMode === 'none') return;
+      state.acMode = parseInt(DOM.modeSelect.value, 10);
+      state.userModifiedMode = true;
+      broadcastUiSync('change_control');
     });
 
     DOM.fanSelect?.addEventListener('change', () => {
@@ -637,15 +618,7 @@
     if (isUserAction) {
       state.userModifiedTemp = true;
       broadcastUiSync('change_control');
-      if (state.connected) {
-        const isAuto = (state.scheduleMode === 'auto');
-        const isRunning = (state.systemState === 'running' || state.acOn);
-        const power = (isRunning || isAuto) ? 1 : (state.acPower || 0);
-        sendMqttPayload(power, validVal, state.acMode, state.acFan, 0, 0, 1, 0);
-        showToast('success', `📡 ส่งค่าอุณหภูมิ ${validVal}°C ไปยัง PLC (D11) แล้ว`);
-      } else {
-        showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว (ออฟไลน์)`);
-      }
+      showToast('info', `ตั้งค่าอุณหภูมิเป็น ${validVal}°C แล้ว — กรุณากดปุ่ม "ส่งคำสั่งรีโมท (SEND MQTT)" เพื่อยิงสัญญาณ IR`);
     }
   }
 
@@ -736,7 +709,7 @@
             state.targetTemp = temp;
           }
         }
-        if (settings.acMode != null) state.acMode = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) เสมอ
+        if (settings.acMode != null) state.acMode = Number(settings.acMode);
         if (settings.acFan != null) state.acFan = Number(settings.acFan);
         if (settings.acPower != null) state.acPower = Number(settings.acPower);
         if (settings.acOn != null) state.acOn = Boolean(settings.acOn);
@@ -820,24 +793,19 @@
     const modeNoneFlag = (mode === 'none') ? 1 : 0;
     const modeAutoFlag = (mode === 'auto') ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
-    const targetTemp = getValidTargetTemp();
 
-    if (mode === 'auto') {
-      state.acOn = true;
-      // เมื่อกดโหมด AUTO ส่ง power = 1 พร้อมยิง IR ON 10 รอบทันทีเพื่อกันข้อผิดพลาด
-      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
-      startIrTransmissionLock(5500);
-      showToast('info', `🔄 เลือกโหมด AUTO สำเร็จ — กำลังยิง IR ON 10 รอบ (${targetTemp}°C) เพื่อกันข้อผิดพลาด`);
-      addLog('info', `[Mode] เลือกโหมด AUTO — ส่งคำสั่งยิง IR ON 10 รอบ (${targetTemp}°C)`);
-    } else {
-      sendMqttPayload(state.acOn ? 1 : 0, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
-      if (mode === 'none') {
-        showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
-        addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
-      } else if (mode === 'manual') {
-        showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
-        addLog('info', '[Mode] เลือกโหมด MANUAL (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
-      }
+    // Send mode flag immediately to PLC via MQTT
+    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
+
+    if (mode === 'none') {
+      showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
+      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
+    } else if (mode === 'auto') {
+      showToast('info', '🔄 เลือกโหมด AUTO สำเร็จ (เวลาฟิกซ์ 08:00 - 17:00) — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+      addLog('info', '[Mode] เลือกโหมด AUTO (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
+    } else if (mode === 'manual') {
+      showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+      addLog('info', '[Mode] เลือกโหมด MANUAL (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
     }
   }
 
@@ -1409,7 +1377,7 @@
     // Number type validation
     const p = Number(power);
     const t = Number(temp);
-    const m = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) ไว้ตลอดเวลา
+    const m = Number(mode);
     const f = Number(fan);
     const c = Number(complete) || 0;
     const r = Number(reset) || 0;
@@ -1581,7 +1549,7 @@
 
   function sendMqttCommandFromUI() {
     if (state.scheduleMode === 'none') {
-      showToast('warning', 'กดปุ่ม SEND MQTT ได้เฉพาะโหมด AUTO หรือ MANUAL เท่านั้น');
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL');
       return;
     }
     if (state.irTransmitting) {
@@ -1589,205 +1557,70 @@
       return;
     }
 
+    const inWorkingWindow = isCurrentlyInWorkingWindow();
+    const isRunning = (state.systemState === 'running' || state.acOn) && inWorkingWindow;
     const temp = getValidTargetTemp();
     const mode = state.acMode;
     const fan = state.acFan;
-    const isAuto = (state.scheduleMode === 'auto');
-    const isRunning = (state.systemState === 'running' || state.acOn);
-    const power = (isRunning || isAuto) ? 1 : (state.acPower || 1);
 
-    // กดปุ่ม SEND MQTT (M8) -> ส่ง mqtt_send = 1 (พัลส์ขอบขาขึ้น) ไปหา ESP32 เพื่อพัลส์ M8 และเขียน D11 ลง PLC
-    const success = sendMqttPayload(power, temp, mode, fan, 0, 0, 1, 0);
-    if (success) {
-      startIrTransmissionLock(5500);
-      showToast('success', `📡 [SEND MQTT] ส่งพัลส์ M8 และค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ`);
-      addLog('success', `[SEND MQTT] ส่งพัลส์ M8 และอุณหภูมิ ${temp}°C เขียนลง PLC (D11) ทันที (ยิง IR 10 รอบ)`);
-
+    if (isRunning) {
+      // อยู่ในช่วงเวลาทำงานและเครื่องปรับอากาศกำลังทำงาน -> ส่ง mqtt_send = 1 เพื่อยิง IR 10 รอบเปลี่ยนอุณหภูมิเครื่องปรับอากาศจริง
+      const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
+      if (success) {
+        startIrTransmissionLock(5500);
+        showToast('success', `📡 อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+        addLog('success', `[MQTT] อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
+      }
+    } else {
+      // ไม่ได้อยู่ในช่วงเวลาทำงาน (ก่อน 08:00/หลัง 17:00 หรือยังไม่ถึงเวลาเริ่ม) -> ห้ามยิง IR (mqtt_send = 0)
+      const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 0, 0);
+      if (success) {
+        const timeHint = (state.scheduleMode === 'auto') ? '08:00 - 17:00' : 'ตามเวลาที่ตั้งไว้';
+        showToast('info', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (ยังไม่ถึงช่วงเวลาทำงาน ${timeHint} — ห้ามยิง IR)`);
+        addLog('info', `[MQTT] บันทึกอุณหภูมิ ${temp}°C — ยังไม่ถึงช่วงเวลาทำงาน (ห้ามยิง IR)`);
+      }
     }
   }
 
-  // Show HMI Notification Popup Modal / Banner
-  function showHmiCommandPopup(title, details, temp, startTimeStr, stopTimeStr) {
-    // ตัด popup ออกทั้งหมดตามคำสั่งผู้ใช้ (ไม่แสดงกล่องเด้ง popup รบกวนบนหน้าจอ)
-    const existing = document.getElementById('hmiNotificationModal');
-    if (existing) existing.remove();
-    return;
-  }
-
-  // Handle incoming status payload from ESP32 (Actual Real-Time State Readback from PLC/HMI)
+  // Handle incoming status payload from ESP32 (Actual State Readback)
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
 
-    // 1. Sync Active Mode from PLC/HMI (M9, M100, M101 / schedule_mode)
-    if (mqttData.schedule_mode && typeof mqttData.schedule_mode === 'string') {
-      const serverMode = mqttData.schedule_mode.toLowerCase();
-      if (serverMode === 'none' || serverMode === 'auto' || serverMode === 'manual') {
-        if (state.scheduleMode !== serverMode) {
-          applyScheduleMode(serverMode);
-        }
+    // In NONE mode, keep inputs blank / empty as requested by user
+    if (state.scheduleMode !== 'none') {
+      if (mqttData.power !== undefined && !state.userModifiedPower) {
+        state.acPower = Number(mqttData.power);
+        state.acOn = (state.acPower === 1);
+        updateControlButtons();
       }
-    }
 
-    // 2. Sync Real Target Temperature (D11) from PLC/HMI
-    if (mqttData.temperature !== undefined) {
-      const t = parseFloat(mqttData.temperature);
-      if (!isNaN(t) && t >= 18 && t <= 27) {
-        state.targetTemp = t;
-        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
-          DOM.targetTemp.value = t;
-        }
-        updateMqttTempDisplay();
-      }
-    }
-
-    // 3. Sync AC Power & Control States from PLC Readback
-    if (mqttData.power !== undefined) {
-      state.acPower = Number(mqttData.power);
-      state.acOn = (state.acPower === 1);
-      updateControlButtons();
-    }
-
-    if (mqttData.mode !== undefined) {
-      state.acMode = 0; // ฟิกซ์โหมดรีโมทเป็น 0 (AUTO) เสมอ
-      if (DOM.modeSelect) {
-        DOM.modeSelect.value = '0';
-        DOM.modeSelect.disabled = true;
-      }
-    }
-
-    if (mqttData.fan !== undefined) {
-      state.acFan = Number(mqttData.fan);
-      if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
-        DOM.fanSelect.value = state.acFan;
-      }
-    }
-
-    // 4. Sync PLC Real-Time Clock (D400-D404 from TRD) to Header Display
-    if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
-      const h = String(mqttData.plc_hour).padStart(2, '0');
-      const m = String(mqttData.plc_minute).padStart(2, '0');
-      if (DOM.headerClock) {
-        DOM.headerClock.textContent = `${h}:${m} (PLC)`;
-      }
-    }
-
-    // 5. Sync Stop Time from PLC (D500-D504) in Manual Mode
-    if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined) {
-      if (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0) {
-        const sh = String(mqttData.stop_hour).padStart(2, '0');
-        const sm = String(mqttData.stop_minute).padStart(2, '0');
-        const sy = mqttData.stop_year || (new Date()).getFullYear();
-        const smo = String(mqttData.stop_month || ((new Date()).getMonth() + 1)).padStart(2, '0');
-        const sd = String(mqttData.stop_day || (new Date()).getDate()).padStart(2, '0');
-        const stopTimeStr = `${sh}:${sm}`;
-        const stopDateStr = `${sy}-${smo}-${sd}`;
-
-        if (state.scheduleMode === 'manual') {
-          state.schedule.offTime = stopTimeStr;
-          state.schedule.offDate = stopDateStr;
-          if (DOM.offTime && document.activeElement !== DOM.offTime) DOM.offTime.value = stopTimeStr;
-          if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = stopDateStr;
-        }
-      }
-    }
-
-    // 6. Process HMI Command Notification & Real-Time Sync
-    if (mqttData.hmi_cmd && typeof mqttData.hmi_cmd === 'string' && mqttData.hmi_cmd.length > 0) {
-      const cmd = mqttData.hmi_cmd;
-      const curTemp = (mqttData.temperature !== undefined) ? parseFloat(mqttData.temperature) : state.targetTemp;
-
-      let startStr = '';
-      let stopStr = '';
-
-      const isCurrentAuto = (state.scheduleMode === 'auto' || cmd === 'temp_auto' || mqttData.mode_auto === 1);
-
-      if (isCurrentAuto) {
-        // โหมด AUTO: เวลาฟิกซ์ไว้แล้ว (08:00 - 17:00 น.) เปลี่ยนได้แค่อุณหภูมิเท่านั้น
-        const todayIso = getTodayIso();
-        startStr = '08:00 (ฟิกซ์เวลา)';
-        stopStr = '17:00 (ฟิกซ์เวลา)';
-
-        state.schedule.onTime = '08:00';
-        state.schedule.offTime = '17:00';
-        state.schedule.onDate = todayIso;
-        state.schedule.offDate = todayIso;
-        state.schedule.enabled = true;
-
-        if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
-        if (DOM.offTime) { DOM.offTime.value = '17:00'; DOM.offTime.disabled = true; }
-        if (DOM.onDate) { DOM.onDate.value = todayIso; DOM.onDate.disabled = true; }
-        if (DOM.offDate) { DOM.offDate.value = todayIso; DOM.offDate.disabled = true; }
-      } else {
-        // โหมด MANUAL: อัปเดตเวลาเริ่ม (คำนวณ +2 นาที) และเวลาปิดตามที่ HMI ตั้งไว้ (D500-D504)
-        if (mqttData.plc_hour !== undefined && mqttData.plc_minute !== undefined) {
-          let pHour = Number(mqttData.plc_hour);
-          let pMin = Number(mqttData.plc_minute) + 2;
-          let pYear = Number(mqttData.plc_year || (new Date()).getFullYear());
-          let pMonth = Number(mqttData.plc_month || ((new Date()).getMonth() + 1));
-          let pDay = Number(mqttData.plc_day || (new Date()).getDate());
-
-          if (pMin >= 60) {
-            pMin -= 60;
-            pHour = (pHour + 1) % 24;
+      if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
+        const t = parseFloat(mqttData.temperature);
+        if (!isNaN(t) && t >= 18 && t <= 27) {
+          state.targetTemp = t;
+          if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
+            DOM.targetTemp.value = t;
           }
-
-          const calcOnTime = `${String(pHour).padStart(2, '0')}:${String(pMin).padStart(2, '0')}`;
-          const calcOnDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
-          startStr = `${calcOnTime} (${formatDisplayDate(calcOnDate)})`;
-
-          state.schedule.onTime = calcOnTime;
-          state.schedule.onDate = calcOnDate;
-          if (DOM.onTime) DOM.onTime.value = calcOnTime;
-          if (DOM.onDate) DOM.onDate.value = calcOnDate;
-        }
-
-        if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (Number(mqttData.stop_hour) > 0 || Number(mqttData.stop_minute) > 0)) {
-          const sHour = Number(mqttData.stop_hour);
-          const sMin = Number(mqttData.stop_minute);
-          const sYear = Number(mqttData.stop_year || (new Date()).getFullYear());
-          const sMonth = Number(mqttData.stop_month || ((new Date()).getMonth() + 1));
-          const sDay = Number(mqttData.stop_day || (new Date()).getDate());
-
-          const calcOffTime = `${String(sHour).padStart(2, '0')}:${String(sMin).padStart(2, '0')}`;
-          const calcOffDate = `${sYear}-${String(sMonth).padStart(2, '0')}-${String(sDay).padStart(2, '0')}`;
-          stopStr = `${calcOffTime} (${formatDisplayDate(calcOffDate)})`;
-
-          state.schedule.offTime = calcOffTime;
-          state.schedule.offDate = calcOffDate;
-          if (DOM.offTime) DOM.offTime.value = calcOffTime;
-          if (DOM.offDate) DOM.offDate.value = calcOffDate;
+          updateMqttTempDisplay();
         }
       }
 
-      // อัปเดตอุณหภูมิเป้าหมาย (เปลี่ยนได้ทั้งในโหมด Auto และ Manual)
-      if (!isNaN(curTemp) && curTemp >= 18 && curTemp <= 27) {
-        state.targetTemp = curTemp;
-        if (DOM.targetTemp) DOM.targetTemp.value = curTemp;
-        updateMqttTempDisplay();
+      if (mqttData.mode !== undefined && !state.userModifiedMode) {
+        state.acMode = Number(mqttData.mode);
+        if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
+          DOM.modeSelect.value = state.acMode;
+        }
       }
 
-      let detailMsg = 'มีการสั่งงานผ่านจอ HMI / PLC';
-      if (cmd === 'start_manual') {
-        detailMsg = 'โหมด MANUAL (M5+M60+M61 ครบเงื่อนไข): เริ่มทำงานทันที';
-        state.acOn = true;
-        state.schedule.enabled = true;
-        updateSystemState('running');
-      } else if (cmd === 'temp_auto') {
-        detailMsg = `โหมด AUTO (M70+M71 ครบเงื่อนไข): ปรับอุณหภูมิใหม่เป็น ${curTemp}°C (เวลาฟิกซ์ 08:00 - 17:00 น.)`;
-        updateMqttTempDisplay();
-      } else if (cmd === 'temp_change') {
-        detailMsg = 'ปรับค่าอุณหภูมิแอร์เป้าหมาย (D11)';
-      } else if (cmd === 'mode_change') {
-        detailMsg = `สลับโหมดการทำงาน (${(mqttData.schedule_mode || state.scheduleMode).toUpperCase()})`;
-      } else if (cmd === 'timeout_stop') {
-        detailMsg = 'ครบเวลาทำงานตามที่ HMI ตั้งไว้ (Timeout Stop)';
+      if (mqttData.fan !== undefined && !state.userModifiedFan) {
+        state.acFan = Number(mqttData.fan);
+        if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
+          DOM.fanSelect.value = state.acFan;
+        }
       }
-
-      showHmiCommandPopup('คำสั่งจากจอ HMI / PLC', detailMsg, curTemp, startStr, stopStr);
-      addLog('info', `🎛️ [HMI Command] ${detailMsg} — อุณหภูมิ: ${curTemp}°C ${startStr ? '| เวลาเริ่ม (+2 นาที): ' + startStr : ''} ${stopStr ? '| เวลาปิด: ' + stopStr : ''}`);
     }
 
-    // 7. Hardware Status Badges
+    // Hardware Status Badges
     if (mqttData.esp32_online !== undefined) {
       state.esp32Online = Boolean(mqttData.esp32_online);
     }
@@ -1795,100 +1628,12 @@
       state.plcOnline = Boolean(mqttData.plc_online);
     }
 
-    // 8. 3 Temperature Sensors Readback (D1-D3)
-    if (mqttData.temp1 !== undefined) {
-      const t1 = parseFloat(mqttData.temp1);
-      updateSensor(1, t1);
-      const chipD1 = document.getElementById('chipD1');
-      if (chipD1) {
-        const lbl = chipD1.querySelector('.plc-io-chip__label');
-        if (lbl) lbl.textContent = `Sensor 1: ${t1.toFixed(1)}°C`;
-      }
-    }
-    if (mqttData.temp2 !== undefined) {
-      const t2 = parseFloat(mqttData.temp2);
-      updateSensor(2, t2);
-      const chipD2 = document.getElementById('chipD2');
-      if (chipD2) {
-        const lbl = chipD2.querySelector('.plc-io-chip__label');
-        if (lbl) lbl.textContent = `Sensor 2: ${t2.toFixed(1)}°C`;
-      }
-    }
-    if (mqttData.temp3 !== undefined) {
-      const t3 = parseFloat(mqttData.temp3);
-      updateSensor(3, t3);
-      const chipD3 = document.getElementById('chipD3');
-      if (chipD3) {
-        const lbl = chipD3.querySelector('.plc-io-chip__label');
-        if (lbl) lbl.textContent = `Sensor 3: ${t3.toFixed(1)}°C`;
-      }
-    }
-    const chipD11 = document.getElementById('chipD11');
-    if (chipD11) {
-      const lbl = chipD11.querySelector('.plc-io-chip__label');
-      if (lbl) lbl.textContent = `Set: ${state.targetTemp}°C`;
-    }
+    // 3 Temperature Sensors Readback (D0-D2)
+    if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
+    if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
+    if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
     if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined) {
       updateTempBadge();
-    }
-
-    // 9. Sync Real Hardware Lamps (Y0-Y2 / M1-M3) & Timeout / Complete Flag (M500)
-    const isM500Complete = Boolean(mqttData.complete === 1 || mqttData.complete === true || mqttData.m500 === 1 || mqttData.m500_complete === 1);
-    const isRedOn = Boolean(mqttData.m2_red === 1 || mqttData.y0_red === 1);
-    const isGreenOn = Boolean(mqttData.m1_green === 1 || mqttData.y2_green === 1);
-    const isYellowOn = Boolean(mqttData.m3_yellow === 1 || mqttData.y1_yellow === 1);
-
-    // 10. Update PLC Hardware I/O Panel LEDs (Live Real-Time Modbus Sync)
-    updateIoLed(DOM.ledX0, Boolean(mqttData.x0_start === 1), 'plc-io-chip__led--green');
-    updateIoLed(DOM.ledX1, Boolean(mqttData.x1_stop === 1), 'plc-io-chip__led--red');
-    updateIoLed(DOM.ledX2, Boolean(mqttData.x2_reset === 1), 'plc-io-chip__led--yellow');
-
-    updateIoLed(DOM.ledY0, isRedOn, 'plc-io-chip__led--red');
-    updateIoLed(DOM.ledY1, isYellowOn, 'plc-io-chip__led--yellow');
-    updateIoLed(DOM.ledY2, isGreenOn, 'plc-io-chip__led--green');
-
-    updateIoLed(DOM.ledM5, Boolean(mqttData.m5 === 1 || (isGreenOn && state.acOn)), 'plc-io-chip__led--green');
-    updateIoLed(DOM.ledM6, Boolean(mqttData.m6 === 1 || (isRedOn && !isM500Complete)), 'plc-io-chip__led--red');
-    updateIoLed(DOM.ledM7, Boolean(mqttData.m7 === 1 || mqttData.x2_reset === 1), 'plc-io-chip__led--yellow');
-    updateIoLed(DOM.ledM8, Boolean(mqttData.m8 === 1), 'plc-io-chip__led--green');
-    updateIoLed(DOM.ledM42, Boolean(mqttData.m42 === 1 || state.schedule.enabled), 'plc-io-chip__led--green');
-    updateIoLed(DOM.ledM500, isM500Complete, 'plc-io-chip__led--red');
-
-    // 11. Handle Physical Hardware Inputs from PLC
-    if (mqttData.x0_start === 1 && !state.acOn) {
-      state.acOn = true;
-      state.acPower = 1;
-      updateSystemState('running');
-    }
-    if (mqttData.x1_stop === 1 && state.systemState !== 'stopped') {
-      state.acOn = false;
-      state.acPower = 0;
-      updateSystemState('stopped');
-    }
-    if (mqttData.x2_reset === 1) {
-      state.acOn = false;
-      state.acPower = 0;
-      state.schedule.enabled = false;
-      updateSystemState('idle');
-    }
-
-    if (isM500Complete || (isRedOn && state.systemState !== 'stopped')) {
-      if (isM500Complete && state.systemState !== 'timeout') {
-        state.acOn = false;
-        state.acPower = 0;
-        updateSystemState('timeout');
-        addLog('warning', '⏰ PLC/HMI แจ้งเตือน: ครบเวลาทำงาน (M500 Complete) — แอร์หยุดทำงานแล้ว (กรุณากดปุ่มรีเซทเพื่อเริ่มใหม่)');
-      } else if (!isM500Complete && isRedOn && state.systemState !== 'stopped' && state.systemState !== 'timeout') {
-        state.acOn = false;
-        state.acPower = 0;
-        updateSystemState('stopped');
-      }
-    } else if (isGreenOn && state.systemState !== 'running') {
-      state.acOn = true;
-      state.acPower = 1;
-      updateSystemState('running');
-    } else if (isYellowOn && state.systemState !== 'idle' && state.systemState !== 'ready' && state.systemState !== 'running') {
-      updateSystemState('idle');
     }
 
     updateMqttStatusUI();
@@ -2169,30 +1914,28 @@
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
-        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดรีเซทเพื่อกลับไปโหมด NONE';
       }
 
-      // Lock schedule inputs during TIMEOUT / STOPPED state
+      // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
       if (DOM.onDate) DOM.onDate.disabled = true;
       if (DOM.offDate) DOM.offDate.disabled = true;
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
-
-      // ปลดล็อกปุ่มรีเซท
-      if (DOM.btnReset) {
-        DOM.btnReset.disabled = false;
-        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดรีเซทเพื่อกลับไปโหมด NONE';
-      }
-
-      // ปลดล็อกปุ่มสลับโหมดเพื่อให้เลือกโหมดใหม่ได้
-      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
-      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
-      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
+      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
+      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
+      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
+      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
+      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
+      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
+      if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = true;
+      if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = true;
+      if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = true;
       return;
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 2. โหมด NONE: ล็อกปุ่มเวลาและปุ่ม SEND MQTT (กดส่งได้เฉพาะ AUTO หรือ MANUAL)
+    // 2. โหมด NONE: ล็อกปุ่มและอินพุตทุกอย่าง ยกเว้นปุ่มสลับโหมด!
     // ──────────────────────────────────────────────────────────────
     if (isNone) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2200,19 +1943,13 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
-      // เปิดให้เลือกอุณหภูมิเป้าหมายได้
-      if (DOM.targetTemp) DOM.targetTemp.disabled = false;
-      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
-      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-      if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
-      if (DOM.fanSelect) DOM.fanSelect.disabled = false;
-      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
-
-      // ล็อกปุ่ม SEND MQTT ในโหมด NONE (กดได้เฉพาะ 2 โหมดคือ AUTO หรือ MANUAL)
-      if (DOM.btnSendMqtt) {
-        DOM.btnSendMqtt.disabled = true;
-        DOM.btnSendMqtt.title = 'กดปุ่ม SEND MQTT ได้เฉพาะในโหมด AUTO หรือ MANUAL เท่านั้น';
-      }
+      if (DOM.targetTemp) DOM.targetTemp.disabled = true;
+      if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = true;
+      if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = true;
+      if (DOM.modeSelect) DOM.modeSelect.disabled = true;
+      if (DOM.fanSelect) DOM.fanSelect.disabled = true;
+      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = true;
+      document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = true);
 
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
@@ -2229,10 +1966,11 @@
         DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnReset) {
-        DOM.btnReset.disabled = false;
+        DOM.btnReset.disabled = true;
+        DOM.btnReset.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
 
-      // ปลดล็อกปุ่มสลับโหมด (NONE / AUTO / MANUAL)
+      // ปลดล็อกเฉพาะปุ่มสลับโหมด (NONE / AUTO / MANUAL)
       if (DOM.modeNoneBtn) DOM.modeNoneBtn.disabled = false;
       if (DOM.modeAutoBtn) DOM.modeAutoBtn.disabled = false;
       if (DOM.modeManualBtn) DOM.modeManualBtn.disabled = false;
@@ -2240,7 +1978,7 @@
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้, กดส่ง MQTT ได้, ล็อกปุ่ม STOP จนกว่าจะถึงเวลาทำงาน)
+    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้, กดส่ง MQTT ได้, กดหยุดได้เมื่อถึงเวลาทำงาน)
     // ──────────────────────────────────────────────────────────────
     if (isAuto) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2248,19 +1986,16 @@
       if (DOM.onTime) DOM.onTime.disabled = true;
       if (DOM.offTime) DOM.offTime.disabled = true;
 
-      // ปลดล็อกให้ปรับอุณหภูมิและกดปุ่ม SEND MQTT ได้ (1 ใน 2 โหมดที่กดได้)
+      // เปิดให้ปรับอุณหภูมิและส่งคำสั่งเครื่องปรับอากาศได้
       if (DOM.targetTemp) DOM.targetTemp.disabled = false;
       if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
       if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-      if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
+      if (DOM.modeSelect) DOM.modeSelect.disabled = false;
       if (DOM.fanSelect) DOM.fanSelect.disabled = false;
-      if (DOM.btnSendMqtt) {
-        DOM.btnSendMqtt.disabled = false;
-        DOM.btnSendMqtt.title = 'ส่งค่าอุณหภูมิไปยัง PLC (D11)';
-      }
+      if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
 
-      // ล็อกปุ่มบันทึกและเริ่มทำงาน (เพราะเวลาฟิกซ์อัตโนมัติแล้ว)
+      // ล็อกทุกปุ่มยกเว้นรีเซท
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
         if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'โหมด AUTO ฟิกซ์เวลาแล้ว';
@@ -2271,15 +2006,13 @@
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงานอัตโนมัติ' : 'ทำงานอัตโนมัติตามเวลา';
         DOM.btnStart.title = 'โหมด AUTO ทำงานอัตโนมัติ';
       }
-
-      // โหมด AUTO: ล็อกปุ่ม STOP ไว้จนกว่าจะถึงเวลาทำงาน (08:00 - 17:00 น. และระบบทำงานอยู่)
-      const isAutoRunning = (state.systemState === 'running' || state.acOn) || isCurrentlyInWorkingWindow();
+      // ปุ่มหยุดทำงาน: ปลดล็อกให้กดได้เมื่อถึงเวลาทำงาน (running)
       if (DOM.btnStop) {
-        DOM.btnStop.disabled = !isAutoRunning;
+        DOM.btnStop.disabled = (state.systemState !== 'running');
         if (DOM.btnStopHint) {
-          DOM.btnStopHint.textContent = isAutoRunning ? 'กดเพื่อหยุดการทำงาน' : 'ล็อกปุ่มไว้จนกว่าจะถึงเวลาทำงาน (08:00 - 17:00)';
+          DOM.btnStopHint.textContent = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน' : 'กดได้เมื่อถึงเวลาทำงาน';
         }
-        DOM.btnStop.title = isAutoRunning ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'ปุ่มล็อกอยู่ จะกดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
+        DOM.btnStop.title = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'สามารถกดหยุดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false; // กดได้เฉพาะปุ่มรีเซท!
@@ -2298,7 +2031,7 @@
     if (DOM.targetTemp) DOM.targetTemp.disabled = false;
     if (DOM.tempMinusBtn) DOM.tempMinusBtn.disabled = false;
     if (DOM.tempPlusBtn) DOM.tempPlusBtn.disabled = false;
-    if (DOM.modeSelect) { DOM.modeSelect.value = "0"; DOM.modeSelect.disabled = true; }
+    if (DOM.modeSelect) DOM.modeSelect.disabled = false;
     if (DOM.fanSelect) DOM.fanSelect.disabled = false;
     if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
     document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
@@ -2445,8 +2178,8 @@
     }
 
     if (!isAutoMode) {
-      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลังเกิน 2 นาที (อนุญาตให้เลือกนาทีปัจจุบันได้)
-      if (start.getTime() < now.getTime() - 120000) {
+      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
+      if (start.getTime() < now.getTime() - 10000) {
         showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
@@ -2546,14 +2279,21 @@
     }
 
     if (!isAutoMode) {
-      // 1. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (เวลาปิดต้องอยู่ในอนาคต)
-      if (stop.getTime() <= now.getTime()) {
-        showToast('error', `เวลาปิดเครื่องปรับอากาศ (${offTimeVal}) ผ่านมาแล้ว กรุณากำหนดเวลาปิดในอนาคต`);
+      // 1. ตรวจสอบห้ามตั้งเวลาเปิดย้อนหลัง (เปิดย้อนหลังไม่ได้)
+      if (start.getTime() < now.getTime() - 10000) {
+        showToast('error', `ห้ามตั้งเวลาเปิดเครื่องปรับอากาศย้อนหลัง (${onTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
         state.schedule.enabled = false;
         return;
       }
 
-      // 2. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
+      // 2. ตรวจสอบห้ามตั้งเวลาปิดย้อนหลัง (ปิดย้อนหลังไม่ได้)
+      if (stop.getTime() <= now.getTime()) {
+        showToast('error', `ห้ามตั้งเวลาปิดเครื่องปรับอากาศย้อนหลัง (${offTimeVal} ผ่านมาแล้ว) กรุณากำหนดเวลาในอนาคต`);
+        state.schedule.enabled = false;
+        return;
+      }
+
+      // 3. เวลาปิดต้องมากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป (>= 60,000 ms)
       const diffMs = stop.getTime() - start.getTime();
       if (diffMs < 60 * 1000) {
         showToast('error', 'ไม่สามารถเริ่มทำงานได้! เวลาปิดเครื่องปรับอากาศต้องตั้งให้มากกว่าเวลาเปิดอย่างน้อย 1 นาทีขึ้นไป');
@@ -2629,22 +2369,15 @@
     state.irTransmitting = false;
     state.systemState = 'idle';
 
-    // 1. ส่งคำสั่ง reset=1 (ขอบขาขึ้น / Rising Edge) ไปยัง ESP32/PLC
+    // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
     sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 1);
     saveSettings();
-
-    // 2. ขอบขาลง (Falling Edge): คืนค่า reset=0 อัตโนมัติใน 300ms เพื่อให้เป็นพัลส์ขอบขาขึ้นจังหวะเดียว (One-Shot)
-    setTimeout(() => {
-      if (state.mqttClient && state.mqttClient.connected) {
-        sendMqttPayload(0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0);
-      }
-    }, 300);
 
     // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที
     applyScheduleMode('none');
 
     broadcastUiSync('reset_system');
-    addLog('info', 'รีเซทระบบเรียบร้อย (พัลส์ M7 ขอบขาขึ้น) — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
+    addLog('info', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE (เลือกระบบ AUTO/MANUAL เพื่อเริ่ม)');
     showToast('success', 'รีเซทระบบเรียบร้อย — เด้งกลับสู่โหมด NONE');
   }
 
@@ -2767,23 +2500,53 @@
   }
 
   // ============================================================
+  //  TOAST NOTIFICATIONS (SINGLE-TOAST ONLY ON USER CLICK)
   // ============================================================
-  //  TOAST NOTIFICATIONS (ตัด popup ออกตามที่ผู้ใช้สั่ง)
-  // ============================================================
+
+  let currentToastTimeout = null;
+  let lastToastMsg = '';
+  let lastToastTime = 0;
 
   function showToast(type, message) {
-    // ตัด popup ออกทั้งหมด: ไม่แสดงกล่องเด้ง popup บนหน้าจอ
-    // บันทึกลงใน Activity Log เพื่อเก็บประวัติไว้ตรวจสอบ
-    return;
-  }
+    if (!DOM.toastContainer) return;
+    const now = Date.now();
 
-  function updateIoLed(ledEl, active, colorClass) {
-    if (!ledEl) return;
-    if (active) {
-      ledEl.className = 'plc-io-chip__led plc-io-chip__led--active ' + (colorClass || '');
-    } else {
-      ledEl.className = 'plc-io-chip__led';
+    // Prevent duplicate toast spamming within 1.5 seconds
+    if (message === lastToastMsg && now - lastToastTime < 1500) {
+      return;
     }
+    lastToastMsg = message;
+    lastToastTime = now;
+
+    // Clear any previous toast immediately to show only 1 toast at a time
+    if (currentToastTimeout) {
+      clearTimeout(currentToastTimeout);
+      currentToastTimeout = null;
+    }
+    DOM.toastContainer.innerHTML = '';
+
+    const icons = {
+      info: '💡',
+      success: '✅',
+      warning: '⚠️',
+      error: '❌',
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.innerHTML = `
+      <span class="toast__icon">${icons[type] || '💡'}</span>
+      <span class="toast__msg">${escapeHtml(message)}</span>
+    `;
+
+    DOM.toastContainer.appendChild(toast);
+
+    currentToastTimeout = setTimeout(() => {
+      toast.classList.add('toast--removing');
+      setTimeout(() => {
+        if (toast.parentElement) toast.remove();
+      }, 200);
+    }, 2000);
   }
 
   // ── Utilities ──

@@ -72,9 +72,8 @@
         <span class="section__badge" id="tempUpdateBadge">-- อัปเดตล่าสุด</span>
       </div>
       <div class="sensor-grid">
-        <!-- Sensor 1 (D0) -->
+        <!-- Sensor 1 -->
         <div class="sensor-card" id="sensorCard1">
-          <div class="sensor-card__reg-tag">D0</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -85,12 +84,11 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 1 (D0)</div>
+          <div class="sensor-card__label">เซนเซอร์ 1</div>
           <div class="sensor-card__location">Indoor (ภายในห้อง)</div>
         </div>
-        <!-- Sensor 2 (D1) -->
+        <!-- Sensor 2 -->
         <div class="sensor-card" id="sensorCard2">
-          <div class="sensor-card__reg-tag">D1</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -101,12 +99,11 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 2 (D1)</div>
+          <div class="sensor-card__label">เซนเซอร์ 2</div>
           <div class="sensor-card__location">Outdoor (ภายนอก)</div>
         </div>
-        <!-- Sensor 3 (D2) -->
+        <!-- Sensor 3 (อินเวอร์เตอร์) -->
         <div class="sensor-card" id="sensorCard3">
-          <div class="sensor-card__reg-tag">D2</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -117,7 +114,7 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 3 (D2)</div>
+          <div class="sensor-card__label">เซนเซอร์ 3</div>
           <div class="sensor-card__location">อินเวอร์เตอร์</div>
         </div>
       </div>
@@ -128,49 +125,45 @@
       <div class="section__header">
         <h2 class="section__title">
           <span class="section__icon">🚦</span>
-          สถานะหลอดไฟเตือน 3 สี (PLC Outputs Y0-Y2)
+          สถานะหลอดไฟเตือน 3 สี
         </h2>
         <span class="state-badge" id="currentStateBadge">โหมด NONE (สแตนด์บาย)</span>
       </div>
       <div class="indicator-grid">
-        <!-- Y0: ไฟแดง (Step 4 / STOP / Timeout) -->
-        <div class="indicator" id="indicatorRed">
-          <div class="indicator__light indicator__light--off" id="lightRed">
-            <div class="indicator__glow"></div>
-          </div>
-          <div class="indicator__info">
-            <div class="indicator__io-tag">Y0 / M2</div>
-            <span class="indicator__label">ไฟแดง (Y0 - Stop / Timeout)</span>
-            <span class="indicator__state" id="stateRed">OFF</span>
-            <span class="indicator__desc" id="descRed">Step 4: TIMEOUT (ครบเวลา) | STOPPED: หยุดทำงาน (กดรีเซท)</span>
-          </div>
-        </div>
-        <!-- Y1: ไฟเหลือง (โหมด NONE / Step 1 IDLE) -->
+        <!-- ไฟเหลือง: โหมด NONE / Step 1 (IDLE) -->
         <div class="indicator" id="indicatorYellow">
           <div class="indicator__light indicator__light--amber-solid" id="lightYellow">
             <div class="indicator__glow"></div>
           </div>
           <div class="indicator__info">
-            <div class="indicator__io-tag">Y1 / M3</div>
-            <span class="indicator__label">ไฟเหลือง (Y1 - Mode NONE / IDLE)</span>
+            <span class="indicator__label">ไฟเหลือง (โหมด NONE / IDLE)</span>
             <span class="indicator__state" id="stateYellow">NONE</span>
             <span class="indicator__desc" id="descYellow">โหมด NONE: สแตนด์บาย | Step 1: IDLE (รอตั้งเวลา)</span>
           </div>
         </div>
-        <!-- Y2: ไฟเขียว (Step 2 READY / Step 3 RUNNING) -->
+        <!-- ไฟเขียว: Step 2 (READY) / Step 3 (RUNNING) -->
         <div class="indicator" id="indicatorGreen">
           <div class="indicator__light indicator__light--off" id="lightGreen">
             <div class="indicator__glow"></div>
           </div>
           <div class="indicator__info">
-            <div class="indicator__io-tag">Y2 / M1</div>
-            <span class="indicator__label">ไฟเขียว (Y2 - Ready / Running)</span>
+            <span class="indicator__label">ไฟเขียว (Step 2/3)</span>
             <span class="indicator__state" id="stateGreen">OFF</span>
             <span class="indicator__desc" id="descGreen">Step 2: READY (พร้อมทำงาน) | Step 3: RUNNING (กำลังทำงาน)</span>
           </div>
         </div>
+        <!-- ไฟแดง: Step 4 (TIMEOUT) / STOPPED -->
+        <div class="indicator" id="indicatorRed">
+          <div class="indicator__light indicator__light--off" id="lightRed">
+            <div class="indicator__glow"></div>
+          </div>
+          <div class="indicator__info">
+            <span class="indicator__label">ไฟแดง (Step 4 / Stop)</span>
+            <span class="indicator__state" id="stateRed">OFF</span>
+            <span class="indicator__desc" id="descRed">Step 4: TIMEOUT (ครบเวลา) | STOPPED: หยุดทำงาน (กดรีเซท)</span>
+          </div>
+        </div>
       </div>
-
 
       <!-- State Flow Diagram -->
       <div class="state-flow">
@@ -330,8 +323,11 @@
                   <!-- Mode -->
                   <div class="mqtt-field">
                     <label class="mqtt-field__label" for="modeSelect">🌀 Mode</label>
-                    <select class="mqtt-select" id="modeSelect" disabled title="โหมดรีโมทฟิกซ์เป็น AUTO ไว้ตลอดเวลา">
-                      <option value="0" selected>🔒 AUTO (ฟิกซ์ตลอดเวลา)</option>
+                    <select class="mqtt-select" id="modeSelect" disabled>
+                      <option value="0">AUTO</option>
+                      <option value="1" selected>COOL</option>
+                      <option value="2">DRY</option>
+                      <option value="3">FAN</option>
                     </select>
                   </div>
                   <!-- Fan -->
@@ -352,7 +348,7 @@
                 </div>
                 <!-- SEND Button for Mode/Fan updates -->
                 <div class="mqtt-send-area">
-                  <button type="button" class="mqtt-send-btn" id="btnSendMqtt">
+                  <button type="button" class="mqtt-send-btn" id="btnSendMqtt" disabled>
                     <span class="mqtt-send-btn__icon">📤</span>
                     <span class="mqtt-send-btn__text">ส่งคำสั่งรีโมท (SEND MQTT)</span>
                   </button>

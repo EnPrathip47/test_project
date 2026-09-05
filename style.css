@@ -267,21 +267,6 @@ body {
   color: var(--text-primary); line-height: 1; letter-spacing: 0.5px;
 }
 .sensor-card__unit { font-size: 0.8rem; color: var(--cyan); font-weight: 700; margin-top: 2px; }
-.sensor-card__reg-tag {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  font-family: 'Inter', monospace;
-  font-size: 0.75rem;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(0, 212, 255, 0.12);
-  border: 1px solid rgba(0, 212, 255, 0.35);
-  color: #00d4ff;
-  letter-spacing: 0.5px;
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
-}
 .sensor-card__label { font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; letter-spacing: 0.3px; }
 .sensor-card__location {
   font-size: 0.82rem; font-weight: 700; color: #475569;
@@ -1532,49 +1517,3 @@ body {
   transform: none !important;
   box-shadow: none !important;
 }
-
-/* ── CUT POPUP OUT: Hide Toast Container completely ── */
-.toast-container {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-
-/* ── I/O TAG ON STATUS INDICATORS ── */
-.indicator__io-tag {
-  display: inline-block;
-  font-family: 'Inter', monospace;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #00d4ff;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-  width: fit-content;
-}
-
-/* ── ACTION BUTTON I/O BADGES ── */
-.action-btn__top-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.action-btn__io-badge {
-  font-family: 'Inter', monospace;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
-  letter-spacing: 0.5px;
-}
-
-
-

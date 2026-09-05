@@ -72,9 +72,9 @@
         <span class="section__badge" id="tempUpdateBadge">-- อัปเดตล่าสุด</span>
       </div>
       <div class="sensor-grid">
-        <!-- Sensor 1 (D1) -->
+        <!-- Sensor 1 (D0) -->
         <div class="sensor-card" id="sensorCard1">
-          <div class="sensor-card__reg-tag">D1</div>
+          <div class="sensor-card__reg-tag">D0</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -85,12 +85,12 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 1 (D1)</div>
+          <div class="sensor-card__label">เซนเซอร์ 1 (D0)</div>
           <div class="sensor-card__location">Indoor (ภายในห้อง)</div>
         </div>
-        <!-- Sensor 2 (D2) -->
+        <!-- Sensor 2 (D1) -->
         <div class="sensor-card" id="sensorCard2">
-          <div class="sensor-card__reg-tag">D2</div>
+          <div class="sensor-card__reg-tag">D1</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -101,12 +101,12 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 2 (D2)</div>
+          <div class="sensor-card__label">เซนเซอร์ 2 (D1)</div>
           <div class="sensor-card__location">Outdoor (ภายนอก)</div>
         </div>
-        <!-- Sensor 3 (D3) -->
+        <!-- Sensor 3 (D2) -->
         <div class="sensor-card" id="sensorCard3">
-          <div class="sensor-card__reg-tag">D3</div>
+          <div class="sensor-card__reg-tag">D2</div>
           <div class="sensor-card__ring">
             <svg class="sensor-card__svg" viewBox="0 0 120 120">
               <circle class="sensor-card__track" cx="60" cy="60" r="52"/>
@@ -117,7 +117,7 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 3 (D3)</div>
+          <div class="sensor-card__label">เซนเซอร์ 3 (D2)</div>
           <div class="sensor-card__location">อินเวอร์เตอร์</div>
         </div>
       </div>
@@ -171,120 +171,6 @@
         </div>
       </div>
 
-      <!-- ── PLC HARDWARE I/O REAL-TIME MONITOR ── -->
-      <div class="plc-io-panel" id="plcIoPanel">
-        <div class="plc-io-panel__header">
-          <div class="plc-io-panel__title">
-            <span>⚡ ตารางสถานะ PLC FX3U Hardware I/O (Real-time Modbus)</span>
-          </div>
-          <div class="plc-io-panel__legend">
-            <span class="plc-io-legend__item"><span class="plc-io-led--on-sample"></span> ON</span>
-            <span class="plc-io-legend__item"><span class="plc-io-led--off-sample"></span> OFF</span>
-          </div>
-        </div>
-        <div class="plc-io-panel__grid">
-          <!-- Discrete Inputs (X) -->
-          <div class="plc-io-group">
-            <div class="plc-io-group__title">📥 Discrete Inputs (X)</div>
-            <div class="plc-io-group__items">
-              <div class="plc-io-chip" id="chipX0" title="X0: ปุ่มกดเริ่มทำงานจริง (PB Start)">
-                <span class="plc-io-chip__led" id="ledX0"></span>
-                <span class="plc-io-chip__pin">X0</span>
-                <span class="plc-io-chip__label">PB Start</span>
-              </div>
-              <div class="plc-io-chip" id="chipX1" title="X1: ปุ่มกดหยุดทำงานจริง (PB Stop)">
-                <span class="plc-io-chip__led" id="ledX1"></span>
-                <span class="plc-io-chip__pin">X1</span>
-                <span class="plc-io-chip__label">PB Stop</span>
-              </div>
-              <div class="plc-io-chip" id="chipX2" title="X2: ปุ่มกดรีเซตระบบจริง (PB Reset)">
-                <span class="plc-io-chip__led" id="ledX2"></span>
-                <span class="plc-io-chip__pin">X2</span>
-                <span class="plc-io-chip__label">PB Reset</span>
-              </div>
-            </div>
-          </div>
-          <!-- Coils Outputs (Y) -->
-          <div class="plc-io-group">
-            <div class="plc-io-group__title">📤 Coils Outputs (Y)</div>
-            <div class="plc-io-group__items">
-              <div class="plc-io-chip" id="chipY0" title="Y0: ไฟเตือนสีแดง (Stop / Timeout)">
-                <span class="plc-io-chip__led plc-io-chip__led--red" id="ledY0"></span>
-                <span class="plc-io-chip__pin">Y0</span>
-                <span class="plc-io-chip__label">ไฟแดง (Stop)</span>
-              </div>
-              <div class="plc-io-chip" id="chipY1" title="Y1: ไฟเตือนสีเหลือง (Idle / Standby / NONE)">
-                <span class="plc-io-chip__led plc-io-chip__led--yellow" id="ledY1"></span>
-                <span class="plc-io-chip__pin">Y1</span>
-                <span class="plc-io-chip__label">ไฟเหลือง (Idle)</span>
-              </div>
-              <div class="plc-io-chip" id="chipY2" title="Y2: ไฟเตือนสีเขียว (Ready / Run)">
-                <span class="plc-io-chip__led plc-io-chip__led--green" id="ledY2"></span>
-                <span class="plc-io-chip__pin">Y2</span>
-                <span class="plc-io-chip__label">ไฟเขียว (Run)</span>
-              </div>
-            </div>
-          </div>
-          <!-- Internal Relays (M) -->
-          <div class="plc-io-group">
-            <div class="plc-io-group__title">⚙️ Internal Relays (M)</div>
-            <div class="plc-io-group__items">
-              <div class="plc-io-chip" id="chipM5" title="M5: Start Command Coil">
-                <span class="plc-io-chip__led" id="ledM5"></span>
-                <span class="plc-io-chip__pin">M5</span>
-                <span class="plc-io-chip__label">Start</span>
-              </div>
-              <div class="plc-io-chip" id="chipM6" title="M6: Stop Command Coil">
-                <span class="plc-io-chip__led" id="ledM6"></span>
-                <span class="plc-io-chip__pin">M6</span>
-                <span class="plc-io-chip__label">Stop</span>
-              </div>
-              <div class="plc-io-chip" id="chipM7" title="M7: Reset Command Coil">
-                <span class="plc-io-chip__led" id="ledM7"></span>
-                <span class="plc-io-chip__pin">M7</span>
-                <span class="plc-io-chip__label">Reset</span>
-              </div>
-              <div class="plc-io-chip" id="chipM8" title="M8: Send MQTT Data (ส่งคำสั่งรีโมทแอร์)">
-                <span class="plc-io-chip__led" id="ledM8"></span>
-                <span class="plc-io-chip__pin">M8</span>
-                <span class="plc-io-chip__label">Send MQTT</span>
-              </div>
-              <div class="plc-io-chip" id="chipM42" title="M42: Save Schedule Coil (บันทึกเวลา)">
-                <span class="plc-io-chip__led" id="ledM42"></span>
-                <span class="plc-io-chip__pin">M42</span>
-                <span class="plc-io-chip__label">Save Sched</span>
-              </div>
-              <div class="plc-io-chip" id="chipM500" title="M500: Schedule Complete Flag">
-                <span class="plc-io-chip__led" id="ledM500"></span>
-                <span class="plc-io-chip__pin">M500</span>
-                <span class="plc-io-chip__label">Complete</span>
-              </div>
-            </div>
-          </div>
-          <!-- Holding Registers (D) -->
-          <div class="plc-io-group">
-            <div class="plc-io-group__title">📊 Holding Registers (D)</div>
-            <div class="plc-io-group__items">
-              <div class="plc-io-chip" id="chipD1" title="D1: เซนเซอร์ 1 (Indoor)">
-                <span class="plc-io-chip__pin">D1</span>
-                <span class="plc-io-chip__label">Sensor 1</span>
-              </div>
-              <div class="plc-io-chip" id="chipD2" title="D2: เซนเซอร์ 2 (Outdoor)">
-                <span class="plc-io-chip__pin">D2</span>
-                <span class="plc-io-chip__label">Sensor 2</span>
-              </div>
-              <div class="plc-io-chip" id="chipD3" title="D3: เซนเซอร์ 3 (อินเวอร์เตอร์)">
-                <span class="plc-io-chip__pin">D3</span>
-                <span class="plc-io-chip__label">Sensor 3</span>
-              </div>
-              <div class="plc-io-chip" id="chipD11" title="D11: อุณหภูมิเป้าหมายแอร์ (18-27°C)">
-                <span class="plc-io-chip__pin">D11</span>
-                <span class="plc-io-chip__label">Set Temp</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- State Flow Diagram -->
       <div class="state-flow">
@@ -464,12 +350,11 @@
                     <div class="mqtt-temp-display" id="mqttTempDisplay">--</div>
                   </div>
                 </div>
-                <!-- SEND Button for Mode/Fan updates (M8) -->
+                <!-- SEND Button for Mode/Fan updates -->
                 <div class="mqtt-send-area">
                   <button type="button" class="mqtt-send-btn" id="btnSendMqtt">
                     <span class="mqtt-send-btn__icon">📤</span>
                     <span class="mqtt-send-btn__text">ส่งคำสั่งรีโมท (SEND MQTT)</span>
-                    <span class="action-btn__io-badge" style="margin-left: 8px;">M8</span>
                   </button>
                   <div class="mqtt-error-msg" id="mqttErrorMsg"></div>
                 </div>
@@ -486,40 +371,28 @@
                   <button class="action-btn action-btn--save" id="btnSave">
                     <div class="action-btn__icon">💾</div>
                     <div class="action-btn__text">
-                      <div class="action-btn__top-line">
-                        <span class="action-btn__label">บันทึกค่า</span>
-                        <span class="action-btn__io-badge">M42</span>
-                      </div>
+                      <span class="action-btn__label">บันทึกค่า</span>
                       <span class="action-btn__hint" id="btnSaveHint"></span>
                     </div>
                   </button>
                   <button class="action-btn action-btn--start" id="btnStart" disabled title="กรุณากดบันทึกเวลาก่อนกดเริ่มทำงาน">
                     <div class="action-btn__icon">🟢</div>
                     <div class="action-btn__text">
-                      <div class="action-btn__top-line">
-                        <span class="action-btn__label">เริ่มทำงาน (ON)</span>
-                        <span class="action-btn__io-badge">X0 / M5</span>
-                      </div>
+                      <span class="action-btn__label">เริ่มทำงาน (ON)</span>
                       <span class="action-btn__hint" id="btnStartHint">ต้องกดบันทึกค่าก่อน</span>
                     </div>
                   </button>
                   <button class="action-btn action-btn--stop" id="btnStop" disabled>
                     <div class="action-btn__icon">🔴</div>
                     <div class="action-btn__text">
-                      <div class="action-btn__top-line">
-                        <span class="action-btn__label">หยุดทำงาน (OFF)</span>
-                        <span class="action-btn__io-badge">X1 / M6</span>
-                      </div>
+                      <span class="action-btn__label">หยุดทำงาน (OFF)</span>
                       <span class="action-btn__hint" id="btnStopHint">กดได้เมื่อถึงเวลาทำงาน</span>
                     </div>
                   </button>
                   <button class="action-btn action-btn--reset" id="btnReset" disabled>
                     <div class="action-btn__icon">🔄</div>
                     <div class="action-btn__text">
-                      <div class="action-btn__top-line">
-                        <span class="action-btn__label">รีเซท</span>
-                        <span class="action-btn__io-badge">X2 / M7</span>
-                      </div>
+                      <span class="action-btn__label">รีเซท</span>
                     </div>
                   </button>
                 </div>

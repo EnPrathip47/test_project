@@ -806,19 +806,24 @@
     const modeNoneFlag = (mode === 'none') ? 1 : 0;
     const modeAutoFlag = (mode === 'auto') ? 1 : 0;
     const modeManualFlag = (mode === 'manual') ? 1 : 0;
+    const targetTemp = getValidTargetTemp();
 
-    // Send mode flag immediately to PLC via MQTT
-    sendMqttPayload(state.acOn ? 1 : 0, getValidTargetTemp(), state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
-
-    if (mode === 'none') {
-      showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
-      addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
-    } else if (mode === 'auto') {
-      showToast('info', '🔄 เลือกโหมด AUTO สำเร็จ (เวลาฟิกซ์ 08:00 - 17:00) — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
-      addLog('info', '[Mode] เลือกโหมด AUTO (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
-    } else if (mode === 'manual') {
-      showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
-      addLog('info', '[Mode] เลือกโหมด MANUAL (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
+    if (mode === 'auto') {
+      state.acOn = true;
+      // เมื่อกดโหมด AUTO ส่ง power = 1 พร้อมยิง IR ON 10 รอบทันทีเพื่อกันข้อผิดพลาด
+      sendMqttPayload(1, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
+      startIrTransmissionLock(5500);
+      showToast('info', `🔄 เลือกโหมด AUTO สำเร็จ — กำลังยิง IR ON 10 รอบ (${targetTemp}°C) เพื่อกันข้อผิดพลาด`);
+      addLog('info', `[Mode] เลือกโหมด AUTO — ส่งคำสั่งยิง IR ON 10 รอบ (${targetTemp}°C)`);
+    } else {
+      sendMqttPayload(state.acOn ? 1 : 0, targetTemp, state.acMode, state.acFan, 0, 0, 0, 0, 0, modeAutoFlag, modeManualFlag, false, 0, modeNoneFlag);
+      if (mode === 'none') {
+        showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
+        addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
+      } else if (mode === 'manual') {
+        showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+        addLog('info', '[Mode] เลือกโหมด MANUAL (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
+      }
     }
   }
 

@@ -959,7 +959,7 @@
       } else if (isAuto) {
         DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับอุณหภูมิได้ & กดหยุดได้เมื่อถึงเวลาทำงาน';
       } else {
-        DOM.modeInfoDesc.textContent = 'ปรับวันที่ เวลา และอุณหภูมิได้อิสระ';
+        DOM.modeInfoDesc.textContent = 'โหมด MANUAL | ไฟสีเหลืองกระพริบ (ปรับตั้งวันเวลา และกดบันทึกค่า)';
       }
     }
 
@@ -2143,8 +2143,18 @@
             DOM.currentStateBadge.textContent = 'โหมด NONE (สแตนด์บาย)';
             DOM.currentStateBadge.className = 'state-badge state-badge--amber';
           }
+        } else if (state.scheduleMode === 'manual') {
+          // ในโหมด MANUAL: ไฟเหลืองกระพริบ (รอตั้งเวลาและกดบันทึกค่า)
+          setLight(DOM.lightYellow, DOM.stateYellow, 'amber-blink', 'MANUAL (รอตั้งเวลา)', '🟡 MANUAL: ไฟเหลืองกระพริบ (รอตั้งเวลา)');
+          setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ');
+          setLight(DOM.lightRed, DOM.stateRed, null, 'OFF', '❌ ดับ');
+          if (idleDot) idleDot.className = 'state-flow__dot state-flow__dot--amber-blink';
+          if (DOM.currentStateBadge) {
+            DOM.currentStateBadge.textContent = 'Step 1: IDLE (โหมด MANUAL / ไฟเหลืองกระพริบ)';
+            DOM.currentStateBadge.className = 'state-badge state-badge--amber';
+          }
         } else {
-          // ในโหมด AUTO / MANUAL ที่ยังไม่ได้บันทึกเวลา
+          // ในโหมด AUTO ที่ยังไม่ได้เริ่ม
           setLight(DOM.lightYellow, DOM.stateYellow, 'amber-solid', 'IDLE', 'IDLE: สแตนด์บาย / รอตั้งเวลา');
           setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ');
           setLight(DOM.lightRed, DOM.stateRed, null, 'OFF', '❌ ดับ');

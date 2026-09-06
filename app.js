@@ -1608,6 +1608,22 @@
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
 
+    // Real-Time Mode Readback from PLC Coils (M9=NONE, M100=MANUAL, M101=AUTO)
+    let plcMode = null;
+    if (mqttData.m101_auto === 1 || mqttData.mode_auto === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'auto')) {
+      plcMode = 'auto';
+    } else if (mqttData.m100_manual === 1 || mqttData.mode_manual === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'manual')) {
+      plcMode = 'manual';
+    } else if (mqttData.m9_none === 1 || mqttData.mode_none === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'none')) {
+      plcMode = 'none';
+    }
+
+    if (plcMode && state.scheduleMode !== plcMode) {
+      state.scheduleMode = plcMode;
+      applyScheduleMode(plcMode);
+      updateScheduleInputsState();
+    }
+
     // In NONE mode, keep inputs blank / empty as requested by user
     if (state.scheduleMode !== 'none') {
       if (mqttData.power !== undefined && !state.userModifiedPower) {

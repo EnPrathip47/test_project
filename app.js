@@ -960,9 +960,10 @@
       const now = new Date();
       const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
       if (start && stop && now >= start && now < stop) {
+        state.acOn = true;
         updateSystemState('running');
-        sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan);
       } else {
+        state.acOn = false;
         updateSystemState('ready');
       }
     } else {

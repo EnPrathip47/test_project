@@ -1591,16 +1591,15 @@
       const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
       if (success) {
         startIrTransmissionLock(5500);
-        showToast('success', `📡 อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-        addLog('success', `[MQTT] อยู่ในช่วงเวลาทำงาน — ส่งคำสั่งปรับอุณหภูมิ ${temp}°C (กำลังยิง IR 10 รอบ)`);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11/M8) สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11/M8) — กำลังยิง IR 10 รอบ`);
       }
     } else {
-      // ไม่ได้อยู่ในช่วงเวลาทำงาน (ก่อน 08:00/หลัง 17:00 หรือยังไม่ถึงเวลาเริ่ม) -> ห้ามยิง IR (mqtt_send = 0)
-      const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 0, 0);
+      // เครื่องยังไม่ได้เปิดทำงาน -> ส่งค่าอุณหภูมิ D11 และ M8 ไปยัง PLC ทันที โดยยังไม่ยิง IR เปิดแอร์
+      const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 1, 0);
       if (success) {
-        const timeHint = (state.scheduleMode === 'auto') ? '08:00 - 17:00' : 'ตามเวลาที่ตั้งไว้';
-        showToast('info', `💾 บันทึกค่าอุณหภูมิ ${temp}°C สำเร็จ (ยังไม่ถึงช่วงเวลาทำงาน ${timeHint} — ห้ามยิง IR)`);
-        addLog('info', `[MQTT] บันทึกอุณหภูมิ ${temp}°C — ยังไม่ถึงช่วงเวลาทำงาน (ห้ามยิง IR)`);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) และเปิด M8=ON ทันทีเรียบร้อย (แอร์ยังไม่เปิด)`);
+        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ลง PLC D11 และสั่ง M8=ON ทันที (แอร์ยังไม่เปิด)`);
       }
     }
   }

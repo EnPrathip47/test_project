@@ -2340,6 +2340,15 @@
   }
 
   function resetSystem() {
+    // ในโหมด AUTO: ถ้าเครื่องกำลังทำงานอยู่ (running) การกดรีเซทจะสั่งหยุดเครื่อง (stopped) ก่อน
+    // ต้องกดหยุดก่อน หรือกดรีเซทซ้ำอีกครั้งในสถานะ stopped ถึงจะกลับเข้าสู่โหมด NONE
+    if (state.scheduleMode === 'auto' && (state.systemState === 'running' || state.acOn)) {
+      stopAC();
+      addLog('warning', '[AUTO MODE] กำลังทำงานอยู่ → สั่งหยุดการทำงาน (Stopped) ก่อน — กดรีเซทอีกครั้งเพื่อกลับสู่โหมด NONE');
+      showToast('warning', 'ในโหมด AUTO: สั่งหยุดการทำงานแล้ว (สถานะ: Stopped) — กดรีเซทอีกครั้งเพื่อกลับสู่โหมด NONE');
+      return;
+    }
+
     state.acOn = false;
     state.schedule.enabled = false;
     state.schedule.onTime = '';
@@ -2364,7 +2373,7 @@
     state.systemState = 'idle';
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
-    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 1);
+    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 1, 0, 0, 0, 0, 0, false, 0, 1);
     saveSettings();
 
     // สลับหน้าจอและการควบคุมเข้าสู่ NONE MODE ทันที

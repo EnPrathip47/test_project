@@ -199,6 +199,10 @@
     stateRed: document.getElementById('stateRed'),
     currentStateBadge: document.getElementById('currentStateBadge'),
     scheduleStatusTag: document.getElementById('scheduleStatusTag'),
+    summaryModeText: document.getElementById('summaryModeText'),
+    summaryTimeText: document.getElementById('summaryTimeText'),
+    summaryDurationText: document.getElementById('summaryDurationText'),
+    summaryProgressText: document.getElementById('summaryProgressText'),
 
     // Controls
     onDate: document.getElementById('onDate'),
@@ -417,6 +421,7 @@
         DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false }) + (isPlcSync ? ' (PLC TRD Synced)' : '');
       }
       checkScheduleState(now);
+      updateScheduleSummary();
       checkEsp32Watchdog();
     }
     updateClock();
@@ -1624,6 +1629,31 @@
       updateScheduleInputsState();
     }
 
+    // Real-Time Machine Running & Lamp Status from PLC (Source of Truth)
+    const isPlcRunning = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running' || mqttData.power === 1);
+    const isPlcStopped = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.machine_state === 'stopped');
+    const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
+
+    if (isPlcRunning) {
+      if (state.systemState !== 'running') {
+        updateSystemState('running');
+      }
+      state.acOn = true;
+      state.acPower = 1;
+    } else if (isPlcStopped) {
+      if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+        updateSystemState('stopped');
+      }
+      state.acOn = false;
+      state.acPower = 0;
+    } else if (isPlcIdle) {
+      if (state.systemState !== 'idle' && state.systemState !== 'ready') {
+        updateSystemState(state.schedule.enabled ? 'ready' : 'idle');
+      }
+      state.acOn = false;
+      state.acPower = 0;
+    }
+
     // In NONE mode, keep inputs blank / empty as requested by user
     if (state.scheduleMode !== 'none') {
       if (mqttData.power !== undefined && !state.userModifiedPower) {
@@ -1639,6 +1669,10 @@
           if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
             DOM.targetTemp.value = t;
           }
+          document.querySelectorAll('.temp-chip').forEach((chip) => {
+            const chipVal = parseFloat(chip.getAttribute('data-temp'));
+            chip.classList.toggle('temp-chip--active', chipVal === t);
+          });
           updateMqttTempDisplay();
         }
       }
@@ -1746,6 +1780,101 @@
         break;
       default:
         if (textEl) textEl.textContent = 'ไม่ได้เชื่อมต่อ';
+    }
+  }
+
+  // ── Unified Schedule & Live Duration Summary ──
+  function updateScheduleSummary() {
+    if (!DOM.summaryModeText || !DOM.summaryTimeText || !DOM.summaryDurationText || !DOM.summaryProgressText) return;
+
+    const mode = state.scheduleMode;
+    const isNone = (mode === 'none');
+    const isAuto = (mode === 'auto');
+    const isManual = (mode === 'manual');
+
+    // 1. Mode Label
+    if (isNone) {
+      DOM.summaryModeText.textContent = '⚡ โหมด NONE (สแตนด์บาย)';
+      DOM.summaryTimeText.textContent = '--:-- ถึง --:--';
+      DOM.summaryDurationText.textContent = '--';
+      DOM.summaryProgressText.textContent = '🟡 สแตนด์บาย (รอเลือกโหมด)';
+      return;
+    }
+
+    if (isAuto) {
+      DOM.summaryModeText.textContent = '🔄 โหมด AUTO (ทุกวัน 08:00 - 17:00)';
+      DOM.summaryTimeText.textContent = '08:00 ถึง 17:00 (ฟิกซ์ตาม PLC)';
+      DOM.summaryDurationText.textContent = '9 ชั่วโมง 00 นาที';
+
+      const now = new Date();
+      const todayIso = getTodayIso();
+      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+
+      if (start && stop) {
+        if (now >= start && now < stop) {
+          const remainMs = stop.getTime() - now.getTime();
+          const remH = Math.floor(remainMs / (1000 * 60 * 60));
+          const remM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60));
+          DOM.summaryProgressText.textContent = `🟢 กำลังทำงาน (เหลือเวลาอีก ${remH} ชม. ${remM} นาที)`;
+        } else if (now < start) {
+          const waitMs = start.getTime() - now.getTime();
+          const waitH = Math.floor(waitMs / (1000 * 60 * 60));
+          const waitM = Math.floor((waitMs % (1000 * 60 * 60)) / (1000 * 60));
+          DOM.summaryProgressText.textContent = `⚡ รอเริ่มทำงานเวลา 08:00 (อีก ${waitH} ชม. ${waitM} นาที)`;
+        } else {
+          DOM.summaryProgressText.textContent = '🔴 ครบเวลาการทำงานของวันนี้แล้ว (17:00)';
+        }
+      }
+      return;
+    }
+
+    // Manual Mode
+    const onT = state.schedule.onTime || DOM.onTime?.value || '';
+    const onD = state.schedule.onDate || DOM.onDate?.value || '';
+    const offT = state.schedule.offTime || DOM.offTime?.value || '';
+    const offD = state.schedule.offDate || DOM.offDate?.value || '';
+
+    DOM.summaryModeText.textContent = '🛠️ โหมด MANUAL (กำหนดเอง)';
+
+    if (!onT || !offT) {
+      DOM.summaryTimeText.textContent = 'รอระบุเวลาเริ่ม - หยุด';
+      DOM.summaryDurationText.textContent = 'รอตั้งเวลา';
+      DOM.summaryProgressText.textContent = '🟡 รอตั้งเวลาและกดบันทึก';
+      return;
+    }
+
+    const start = parseScheduleDateTime(onD || getTodayIso(), onT);
+    const stop = parseScheduleDateTime(offD || getTodayIso(), offT);
+
+    const onDateDisplay = onD ? formatDisplayDate(onD) : getTodayDDMMYYYY();
+    const offDateDisplay = offD ? formatDisplayDate(offD) : getTodayDDMMYYYY();
+    DOM.summaryTimeText.textContent = `${onDateDisplay} ${onT} ถึง ${offDateDisplay} ${offT}`;
+
+    if (start && stop && stop > start) {
+      const diffMs = stop.getTime() - start.getTime();
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      DOM.summaryDurationText.textContent = `${hours} ชั่วโมง ${String(mins).padStart(2, '0')} นาที`;
+
+      const now = new Date();
+      if (state.systemState === 'stopped') {
+        DOM.summaryProgressText.textContent = '⛔ หยุดทำงานแล้ว (กดรีเซทเพื่อเริ่มรอบใหม่)';
+      } else if (state.systemState === 'timeout' || now >= stop) {
+        DOM.summaryProgressText.textContent = '🔴 ครบเวลาทำงานแล้ว (กดรีเซทเพื่อเริ่มรอบใหม่)';
+      } else if (now >= start && now < stop) {
+        const remainMs = stop.getTime() - now.getTime();
+        const remH = Math.floor(remainMs / (1000 * 60 * 60));
+        const remM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60));
+        DOM.summaryProgressText.textContent = `🟢 กำลังทำงาน (เหลือเวลาอีก ${remH} ชม. ${remM} นาที)`;
+      } else if (now < start) {
+        const waitMs = start.getTime() - now.getTime();
+        const waitH = Math.floor(waitMs / (1000 * 60 * 60));
+        const waitM = Math.floor((waitMs % (1000 * 60 * 60)) / (1000 * 60));
+        DOM.summaryProgressText.textContent = `⚡ พร้อมทำงาน (รอเริ่มในอีก ${waitH} ชม. ${waitM} นาที)`;
+      }
+    } else {
+      DOM.summaryDurationText.textContent = 'ระบุเวลาไม่ถูกต้อง';
+      DOM.summaryProgressText.textContent = '⚠️ เวลาปิดต้องมากกว่าเวลาเปิด';
     }
   }
 

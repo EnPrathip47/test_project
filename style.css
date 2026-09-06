@@ -1517,3 +1517,36 @@ body {
   transform: none !important;
   box-shadow: none !important;
 }
+
+/* ── Schedule Summary Bar ── */
+.schedule-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: rgba(13, 22, 38, 0.7);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 15px rgba(0, 229, 255, 0.05);
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.summary-item__value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+}
+

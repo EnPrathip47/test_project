@@ -2228,8 +2228,8 @@
         DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnReset) {
-        DOM.btnReset.disabled = true;
-        DOM.btnReset.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+        DOM.btnReset.disabled = false;
+        DOM.btnReset.title = 'กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ';
       }
 
       // ปลดล็อกเฉพาะปุ่มสลับโหมด (NONE / AUTO / MANUAL)

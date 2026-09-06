@@ -2340,14 +2340,6 @@
   }
 
   function resetSystem() {
-    // ในโหมด AUTO: ถ้าเครื่องกำลังทำงานอยู่ (running) การกดรีเซทจะสั่งหยุดเครื่อง (stopped) ก่อน
-    // ต้องกดหยุดก่อน หรือกดรีเซทซ้ำอีกครั้งในสถานะ stopped ถึงจะกลับเข้าสู่โหมด NONE
-    if (state.scheduleMode === 'auto' && (state.systemState === 'running' || state.acOn)) {
-      stopAC();
-      addLog('warning', '[AUTO MODE] กำลังทำงานอยู่ → สั่งหยุดการทำงาน (Stopped) ก่อน — กดรีเซทอีกครั้งเพื่อกลับสู่โหมด NONE');
-      showToast('warning', 'ในโหมด AUTO: สั่งหยุดการทำงานแล้ว (สถานะ: Stopped) — กดรีเซทอีกครั้งเพื่อกลับสู่โหมด NONE');
-      return;
-    }
 
     state.acOn = false;
     state.schedule.enabled = false;

@@ -1696,6 +1696,55 @@
       updateScheduleInputsState();
     }
 
+    // HMI Manual Mode M5 Start Trigger Synchronization (อิงเวลาเริ่มตามเวลากด M5 บน HMI)
+    if (state.scheduleMode === 'manual' && (mqttData.m5_start === 1 || (mqttData.start_hour !== undefined && (mqttData.power === 1 || mqttData.m1_green === 1 || mqttData.y2_green === 1 || mqttData.y0_green === 1)))) {
+      state.schedule.enabled = true;
+      if (mqttData.start_hour !== undefined && mqttData.start_minute !== undefined) {
+        const sH = String(mqttData.start_hour).padStart(2, '0');
+        const sM = String(mqttData.start_minute).padStart(2, '0');
+        state.schedule.onTime = `${sH}:${sM}`;
+        if (DOM.onTime) {
+          DOM.onTime.value = state.schedule.onTime;
+          DOM.onTime.disabled = true;
+        }
+        if (mqttData.start_year && mqttData.start_month && mqttData.start_day) {
+          const sY = String(mqttData.start_year);
+          const sMo = String(mqttData.start_month).padStart(2, '0');
+          const sD = String(mqttData.start_day).padStart(2, '0');
+          state.schedule.onDate = `${sY}-${sMo}-${sD}`;
+          if (DOM.onDate) {
+            DOM.onDate.value = state.schedule.onDate;
+            DOM.onDate.disabled = true;
+          }
+        }
+      }
+      if (mqttData.stop_hour !== undefined && mqttData.stop_minute !== undefined && (mqttData.stop_hour > 0 || mqttData.stop_minute > 0)) {
+        const eH = String(mqttData.stop_hour).padStart(2, '0');
+        const eM = String(mqttData.stop_minute).padStart(2, '0');
+        state.schedule.offTime = `${eH}:${eM}`;
+        if (DOM.offTime) {
+          DOM.offTime.value = state.schedule.offTime;
+          DOM.offTime.disabled = true;
+        }
+        if (mqttData.stop_year && mqttData.stop_year >= 2020 && mqttData.stop_month && mqttData.stop_day) {
+          const eY = String(mqttData.stop_year);
+          const eMo = String(mqttData.stop_month).padStart(2, '0');
+          const eD = String(mqttData.stop_day).padStart(2, '0');
+          state.schedule.offDate = `${eY}-${eMo}-${eD}`;
+          if (DOM.offDate) {
+            DOM.offDate.value = state.schedule.offDate;
+            DOM.offDate.disabled = true;
+          }
+        }
+      }
+      state.acOn = true;
+      state.acPower = 1;
+      updateSystemState('running');
+      updateControlButtons();
+      updateScheduleSummary();
+      saveSettings();
+    }
+
     // If in NONE mode or MANUAL mode without saved schedule, enforce STANDBY / IDLE
     if (state.scheduleMode === 'none') {
       state.acOn = false;

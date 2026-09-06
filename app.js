@@ -1054,9 +1054,7 @@
           DOM.targetTemp.placeholder = '18 - 27';
         }
         updateMqttTempDisplay();
-        if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
-          updateSystemState('idle');
-        }
+        updateSystemState('idle');
       } else {
         // If schedule already enabled (setting time แล้ว), restore input values and lock inputs!
         if (DOM.onDate) {
@@ -1279,7 +1277,7 @@
     }
 
     // 5. Update System State
-    if (state.scheduleMode === 'none') {
+    if (state.scheduleMode === 'none' || (state.scheduleMode === 'manual' && !state.schedule.enabled)) {
       updateSystemState('idle');
     } else if (data.systemState && data.systemState !== state.systemState) {
       updateSystemState(data.systemState);
@@ -1698,8 +1696,14 @@
       updateScheduleInputsState();
     }
 
-    // If in NONE mode, ALWAYS enforce STANDBY (Yellow Solid lamp only, never Running/Stopped/Timeout)
+    // If in NONE mode or MANUAL mode without saved schedule, enforce STANDBY / IDLE
     if (state.scheduleMode === 'none') {
+      state.acOn = false;
+      state.acPower = 0;
+      if (state.systemState !== 'idle') {
+        updateSystemState('idle');
+      }
+    } else if (state.scheduleMode === 'manual' && !state.schedule.enabled) {
       state.acOn = false;
       state.acPower = 0;
       if (state.systemState !== 'idle') {
@@ -2010,6 +2014,10 @@
   function updateSystemState(nextState) {
     if (state.scheduleMode === 'none') {
       nextState = 'idle';
+    } else if (state.scheduleMode === 'manual' && !state.schedule.enabled) {
+      if (nextState !== 'stopped' && nextState !== 'timeout') {
+        nextState = 'idle';
+      }
     }
     state.systemState = nextState;
 
@@ -2029,10 +2037,15 @@
         DOM.scheduleStatusTag.textContent = '⛔ Case 2: กดหยุดทำงาน (ไฟแดงติดค้าง — ต้องกด "รีเซท" เท่านั้น)';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       } else if (nextState === 'running') {
-        const onT = state.schedule.onTime || DOM.onTime?.value || '--:--';
-        const offT = state.schedule.offTime || DOM.offTime?.value || '--:--';
-        DOM.scheduleStatusTag.textContent = `🟢 กำลังทำงาน (${onT} - ${offT})`;
-        DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--active';
+        const onT = state.schedule.onTime || DOM.onTime?.value || '';
+        const offT = state.schedule.offTime || DOM.offTime?.value || '';
+        if (!onT || !offT || (state.scheduleMode === 'manual' && !state.schedule.enabled)) {
+          DOM.scheduleStatusTag.textContent = '⚠️ Step 1: IDLE (สแตนด์บาย / รอตั้งเวลาและกดบันทึกค่า)';
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
+        } else {
+          DOM.scheduleStatusTag.textContent = `🟢 กำลังทำงาน (${onT} - ${offT})`;
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--active';
+        }
       } else if (nextState === 'ready') {
         const onT = state.schedule.onTime || DOM.onTime?.value || '';
         const onD = state.schedule.onDate || DOM.onDate?.value || '';

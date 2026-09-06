@@ -382,7 +382,7 @@
                 <span>ปุ่มคำสั่งควบคุมระบบ & เปิด-ปิดเครื่องปรับอากาศ</span>
               </div>
 
-              <!-- Sub-section 2: System Action Buttons (Unified Start/ON & Reset) -->
+              <!-- Sub-section 2: System Action Buttons (Unified Start/ON, Stop/OFF, Save, Reset) -->
               <div class="action-subpanel">
                 <div class="action-buttons">
                   <button type="button" class="action-btn action-btn--save" id="btnSave">
@@ -397,6 +397,13 @@
                     <div class="action-btn__text">
                       <span class="action-btn__label">เริ่มทำงาน (ON)</span>
                       <span class="action-btn__hint" id="btnStartHint">ต้องกดบันทึกค่าก่อน</span>
+                    </div>
+                  </button>
+                  <button type="button" class="action-btn action-btn--stop" id="btnStop" disabled title="กดเพื่อหยุดการทำงาน (OFF)">
+                    <div class="action-btn__icon">🛑</div>
+                    <div class="action-btn__text">
+                      <span class="action-btn__label">หยุดทำงาน (OFF)</span>
+                      <span class="action-btn__hint" id="btnStopHint">กดเมื่อเริ่มทำงาน</span>
                     </div>
                   </button>
                   <button type="button" class="action-btn action-btn--reset" id="btnReset" title="กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ">
@@ -803,10 +810,10 @@
             
             <div class="manual-rules-grid">
               <div class="manual-rule-card manual-rule-card--danger">
-                <div class="manual-rule-icon">🚫</div>
+                <div class="manual-rule-icon">🛑</div>
                 <div class="manual-rule-content">
-                  <h4>ไม่มีปุ่ม STOP ในระบบ (No Manual Stop)</h4>
-                  <p>ระบบถูกออกแบบมาให้ปิดเครื่องปรับอากาศผ่าน <strong>เวลาที่กำหนด (Timeout M500)</strong> หรือการกดปุ่ม <strong>"รีเซท (RESET M7)"</strong> เท่านั้น เพื่อป้องกันปัญหาเครื่องหยุดทำงานกะทันหันขณะไม่มีผู้ดูแล</p>
+                  <h4>ปุ่มหยุดการทำงาน (STOP) และการล็อกระบบ</h4>
+                  <p>เมื่อกดปุ่ม <strong>"🛑 หยุดทำงาน"</strong> หรือเมื่อครบเวลาทำงาน ระบบจะยิงสัญญาณ IR ปิดแอร์ 10 รอบ และเปลี่ยนเป็น <strong>ไฟแดงติดค้าง (M2/M12)</strong> ทันที ระบบจะล็อกไว้และต้องกด <strong>"🔄 รีเซท (RESET)"</strong> ก่อนเสมอจึงจะสั่งงานใหม่ได้</p>
                 </div>
               </div>
 

@@ -841,8 +841,20 @@ body {
 /* Action Buttons */
 .action-buttons {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+
+@media (max-width: 992px) {
+  .action-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .action-buttons {
+    grid-template-columns: 1fr;
+  }
 }
 
 .action-btn {
@@ -911,6 +923,16 @@ body {
   border-color: var(--green);
   background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,255,136,0.05));
   box-shadow: 0 6px 25px var(--green-dim);
+}
+
+.action-btn--stop {
+  border-color: rgba(255,68,102,0.2);
+  background: linear-gradient(135deg, rgba(255,68,102,0.06), rgba(255,68,102,0.02));
+}
+.action-btn--stop:hover:not(:disabled) {
+  border-color: var(--red);
+  background: linear-gradient(135deg, rgba(255,68,102,0.15), rgba(255,68,102,0.05));
+  box-shadow: 0 6px 25px var(--red-dim);
 }
 
 .action-btn--reset {

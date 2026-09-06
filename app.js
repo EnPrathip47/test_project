@@ -218,9 +218,11 @@
     targetTemp: document.getElementById('targetTemp'),
     btnSave: document.getElementById('btnSave'),
     btnStart: document.getElementById('btnStart'),
+    btnStop: document.getElementById('btnStop'),
     btnReset: document.getElementById('btnReset'),
     btnSaveHint: document.getElementById('btnSaveHint'),
     btnStartHint: document.getElementById('btnStartHint'),
+    btnStopHint: document.getElementById('btnStopHint'),
     btnResetHint: document.getElementById('btnResetHint'),
 
     // State flow
@@ -572,6 +574,7 @@
   function bindEvents() {
     DOM.btnSave?.addEventListener('click', throttleClick(saveSchedule));
     DOM.btnStart?.addEventListener('click', throttleClick(startAC));
+    DOM.btnStop?.addEventListener('click', throttleClick(stopAC));
     DOM.btnReset?.addEventListener('click', throttleClick(resetSystem));
     DOM.connectBtn?.addEventListener('click', throttleClick(connectMqttBroker));
     DOM.disconnectBtn?.addEventListener('click', throttleClick(disconnectMqttBroker));
@@ -2349,6 +2352,10 @@
         DOM.btnStart.disabled = true;
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'ระบบถูกล็อก (กดรีเซท)';
       }
+      if (DOM.btnStop) {
+        DOM.btnStop.disabled = true;
+        if (DOM.btnStopHint) DOM.btnStopHint.textContent = 'หยุดทำงานแล้ว';
+      }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
         if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดเพื่อปลดล็อก';
@@ -2399,6 +2406,11 @@
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'เลือกโหมดเพื่อเริ่ม';
         DOM.btnStart.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
+      if (DOM.btnStop) {
+        DOM.btnStop.disabled = true;
+        if (DOM.btnStopHint) DOM.btnStopHint.textContent = 'เลือกโหมดเพื่อเริ่ม';
+        DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
+      }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
         if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดเพื่อรีเซท';
@@ -2440,6 +2452,13 @@
         DOM.btnStart.disabled = true;
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงานอัตโนมัติ' : 'ทำงานตามเวลา 08:00';
         DOM.btnStart.title = 'โหมด AUTO ทำงานอัตโนมัติ';
+      }
+      if (DOM.btnStop) {
+        DOM.btnStop.disabled = (state.systemState !== 'running');
+        if (DOM.btnStopHint) {
+          DOM.btnStopHint.textContent = (state.systemState === 'running') ? 'กดเพื่อหยุดทำงาน' : 'กดเมื่อเริ่มทำงาน';
+        }
+        DOM.btnStop.title = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'สามารถกดหยุดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
@@ -2515,6 +2534,15 @@
         (!state.schedule.enabled) ? 'กรุณากดบันทึกค่าก่อน' :
         (isBeforeStart) ? `ยังไม่ถึงเวลาเริ่มทำงาน (${onT}) — ระบบจะเริ่มทำงานให้อัตโนมัติเมื่อถึงเวลา` :
         'กดเพื่อเริ่มทำงานเครื่องปรับอากาศ';
+    }
+
+    // ปุ่มหยุดทำงาน: ปลดล็อกให้กดได้เมื่อเครื่องกำลังรัน (running)
+    if (DOM.btnStop) {
+      DOM.btnStop.disabled = (state.systemState !== 'running');
+      if (DOM.btnStopHint) {
+        DOM.btnStopHint.textContent = (state.systemState === 'running') ? 'กดเพื่อหยุดทำงาน' : 'กดเมื่อเริ่มทำงาน';
+      }
+      DOM.btnStop.title = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'สามารถกดหยุดได้เมื่อเครื่องกำลังทำงาน';
     }
 
     // ปุ่มรีเซท: สามารถกดรีเซทได้เสมอในโหมด MANUAL
@@ -2716,6 +2744,37 @@
     broadcastUiSync('start_ac');
     addLog('success', `${modeLabel} กดเริ่มทำงาน — สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
     showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${targetTemp}°C)`);
+  }
+
+  function stopAC() {
+    if (state.scheduleMode === 'none') {
+      showToast('warning', 'โหมด NONE ถูกล็อก — กรุณาเลือกโหมด AUTO หรือ MANUAL ก่อน');
+      return;
+    }
+    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      showToast('warning', 'ระบบหยุดทำงานแล้ว (ไฟแดงติดค้าง) — ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
+      return;
+    }
+    if (state.systemState !== 'running') {
+      showToast('info', 'เครื่องปรับอากาศยังไม่ได้เริ่มทำงาน (สามารถกดหยุดได้เมื่อเครื่องกำลังทำงาน)');
+      return;
+    }
+
+    state.acOn = false;
+    state.acPower = 0;
+    state.userActionUntil = Date.now() + 5000;
+    state.userModifiedPowerUntil = Date.now() + 5000;
+    updateSystemState('stopped');
+
+    // ส่งคำสั่งหยุด (stop_btn = 1) และยิง IR ปิดแอร์ 10 รอบ
+    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 1, 0);
+    startIrTransmissionLock(5500);
+
+    const modeLabel = (state.scheduleMode === 'auto') ? '[AUTO]' : '[MANUAL]';
+    addLog('warning', `${modeLabel} กดปุ่ม STOP — สั่งหยุดการทำงานและยิงสัญญาณ IR ปิดแอร์ (ต้องกดรีเซทเท่านั้น)`);
+    showToast('warning', '🛑 หยุดการทำงานของเครื่องปรับอากาศแล้ว (กรุณากดปุ่ม "รีเซท" เพื่อเริ่มรอบใหม่)');
+    broadcastUiSync('stop_ac');
+    updateControlButtons();
   }
 
   function resetSystem() {

@@ -548,7 +548,6 @@
   function bindEvents() {
     DOM.btnSave?.addEventListener('click', saveSchedule);
     DOM.btnStart?.addEventListener('click', startAC);
-    DOM.btnStop?.addEventListener('click', stopAC);
     DOM.btnReset?.addEventListener('click', resetSystem);
     DOM.connectBtn?.addEventListener('click', connectMqttBroker);
     DOM.disconnectBtn?.addEventListener('click', disconnectMqttBroker);
@@ -1772,9 +1771,9 @@
         updateSystemState('idle');
       }
     } else {
-      // Real-Time Machine Running & Lamp Status from PLC (Source of Truth)
-      const isPlcRunning = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running' || mqttData.power === 1);
-      const isPlcStopped = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.machine_state === 'stopped');
+      // Real-Time Machine Running & Lamp Status from PLC (Source of Truth - M2, M12 Red Lamp)
+      const isPlcStopped = (mqttData.m2_red === 1 || mqttData.m12_red === 1 || mqttData.red_lamp === 1 || mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.machine_state === 'stopped');
+      const isPlcRunning = (mqttData.power === 1 || mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running');
       const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
 
       if (isPlcStopped || state.systemState === 'stopped' || state.systemState === 'timeout') {
@@ -2256,9 +2255,6 @@
         DOM.btnStart.disabled = true;
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'ระบบถูกล็อก (กดรีเซท)';
       }
-      if (DOM.btnStop) {
-        DOM.btnStop.disabled = true;
-      }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
       }
@@ -2307,10 +2303,6 @@
         DOM.btnStart.disabled = true;
         if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'กรุณาสลับโหมดเพื่อเริ่มใช้งาน';
         DOM.btnStart.title = 'โหมด NONE ไม่สามารถใช้งานได้';
-      }
-      if (DOM.btnStop) {
-        DOM.btnStop.disabled = true;
-        DOM.btnStop.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
@@ -2434,11 +2426,6 @@
         (!state.schedule.enabled) ? 'กรุณากดบันทึกค่าก่อน' :
         (isBeforeStart) ? `ยังไม่ถึงเวลาเริ่มทำงาน (${onT}) — ระบบจะเริ่มทำงานให้อัตโนมัติเมื่อถึงเวลา` :
         'กดเพื่อเริ่มทำงานเครื่องปรับอากาศ';
-    }
-
-    // ขั้นที่ 4: ปุ่มหยุดทำงาน (btnStop)
-    if (DOM.btnStop) {
-      DOM.btnStop.disabled = (state.systemState !== 'running');
     }
 
     // ปุ่มรีเซท: สามารถกดรีเซทได้เสมอในโหมด MANUAL
@@ -2639,21 +2626,6 @@
     broadcastUiSync('start_ac');
     addLog('success', `${modeLabel} กดเริ่มทำงาน — สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
     showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${targetTemp}°C)`);
-  }
-
-  function stopAC() {
-    if (state.scheduleMode === 'none') return;
-    if (state.irTransmitting) {
-      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อน');
-      return;
-    }
-    state.acOn = false;
-    sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 1); // stop_btn = 1 (Triggers M6 ON & IR 10x OFF)
-    startIrTransmissionLock(5500);
-    updateSystemState('stopped');
-    broadcastUiSync('stop_ac');
-    addLog('warning', 'กดหยุดการทำงาน — สั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR (10 ครั้ง)');
-    showToast('warning', 'หยุดทำงานแล้ว — ยิง IR ปิดเครื่องปรับอากาศ (10 ครั้ง)');
   }
 
   function resetSystem() {

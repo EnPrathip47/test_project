@@ -988,9 +988,7 @@
         DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE: กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       }
-      if (state.systemState !== 'stopped' && state.systemState !== 'timeout' && state.systemState !== 'running') {
-        updateSystemState('idle');
-      }
+      updateSystemState('idle');
     } else if (isAuto) {
       const todayIso = getTodayIso();
       if (DOM.onTime) { DOM.onTime.value = '08:00'; DOM.onTime.disabled = true; }
@@ -1269,7 +1267,9 @@
     }
 
     // 5. Update System State
-    if (data.systemState && data.systemState !== state.systemState) {
+    if (state.scheduleMode === 'none') {
+      updateSystemState('idle');
+    } else if (data.systemState && data.systemState !== state.systemState) {
       updateSystemState(data.systemState);
     }
 
@@ -1686,29 +1686,38 @@
       updateScheduleInputsState();
     }
 
-    // Real-Time Machine Running & Lamp Status from PLC (Source of Truth)
-    const isPlcRunning = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running' || mqttData.power === 1);
-    const isPlcStopped = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.machine_state === 'stopped');
-    const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
+    // If in NONE mode, ALWAYS enforce STANDBY (Yellow Solid lamp only, never Running/Stopped/Timeout)
+    if (state.scheduleMode === 'none') {
+      state.acOn = false;
+      state.acPower = 0;
+      if (state.systemState !== 'idle') {
+        updateSystemState('idle');
+      }
+    } else {
+      // Real-Time Machine Running & Lamp Status from PLC (Source of Truth)
+      const isPlcRunning = (mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running' || mqttData.power === 1);
+      const isPlcStopped = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.machine_state === 'stopped');
+      const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
 
-    if (isPlcRunning) {
-      if (state.systemState !== 'running') {
-        updateSystemState('running');
+      if (isPlcRunning) {
+        if (state.systemState !== 'running') {
+          updateSystemState('running');
+        }
+        state.acOn = true;
+        state.acPower = 1;
+      } else if (isPlcStopped) {
+        if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
+          updateSystemState('stopped');
+        }
+        state.acOn = false;
+        state.acPower = 0;
+      } else if (isPlcIdle) {
+        if (state.systemState !== 'idle' && state.systemState !== 'ready') {
+          updateSystemState(state.schedule.enabled ? 'ready' : 'idle');
+        }
+        state.acOn = false;
+        state.acPower = 0;
       }
-      state.acOn = true;
-      state.acPower = 1;
-    } else if (isPlcStopped) {
-      if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
-        updateSystemState('stopped');
-      }
-      state.acOn = false;
-      state.acPower = 0;
-    } else if (isPlcIdle) {
-      if (state.systemState !== 'idle' && state.systemState !== 'ready') {
-        updateSystemState(state.schedule.enabled ? 'ready' : 'idle');
-      }
-      state.acOn = false;
-      state.acPower = 0;
     }
 
     // In NONE mode, keep inputs blank / empty as requested by user
@@ -1987,6 +1996,9 @@
   }
 
   function updateSystemState(nextState) {
+    if (state.scheduleMode === 'none') {
+      nextState = 'idle';
+    }
     state.systemState = nextState;
 
     setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ');

@@ -71,6 +71,11 @@
     userModifiedMode: false,
     userModifiedFan: false,
     userModifiedTemp: false,
+    userModifiedModeUntil: 0,
+    userModifiedTempUntil: 0,
+    userModifiedPowerUntil: 0,
+    userModifiedFanUntil: 0,
+    userActionUntil: 0,
 
     // PLC RTC Time Sync (TRD D400-D406)
     plcRtc: {
@@ -213,11 +218,10 @@
     targetTemp: document.getElementById('targetTemp'),
     btnSave: document.getElementById('btnSave'),
     btnStart: document.getElementById('btnStart'),
-    btnStop: document.getElementById('btnStop'),
     btnReset: document.getElementById('btnReset'),
     btnSaveHint: document.getElementById('btnSaveHint'),
     btnStartHint: document.getElementById('btnStartHint'),
-    btnStopHint: document.getElementById('btnStopHint'),
+    btnResetHint: document.getElementById('btnResetHint'),
 
     // State flow
     flowIdle: document.getElementById('flowIdle'),
@@ -553,15 +557,26 @@
     }
   }
 
+  // Click Throttling Helper (Prevents rapid double-clicking / jitter)
+  function throttleClick(fn, delay = 350) {
+    let lastCall = 0;
+    return function (...args) {
+      const now = Date.now();
+      if (now - lastCall < delay) return;
+      lastCall = now;
+      return fn.apply(this, args);
+    };
+  }
+
   // ── Event Binding ──
   function bindEvents() {
-    DOM.btnSave?.addEventListener('click', saveSchedule);
-    DOM.btnStart?.addEventListener('click', startAC);
-    DOM.btnReset?.addEventListener('click', resetSystem);
-    DOM.connectBtn?.addEventListener('click', connectMqttBroker);
-    DOM.disconnectBtn?.addEventListener('click', disconnectMqttBroker);
-    DOM.demoBtn?.addEventListener('click', toggleDemo);
-    DOM.clearLogBtn?.addEventListener('click', clearLog);
+    DOM.btnSave?.addEventListener('click', throttleClick(saveSchedule));
+    DOM.btnStart?.addEventListener('click', throttleClick(startAC));
+    DOM.btnReset?.addEventListener('click', throttleClick(resetSystem));
+    DOM.connectBtn?.addEventListener('click', throttleClick(connectMqttBroker));
+    DOM.disconnectBtn?.addEventListener('click', throttleClick(disconnectMqttBroker));
+    DOM.demoBtn?.addEventListener('click', throttleClick(toggleDemo));
+    DOM.clearLogBtn?.addEventListener('click', throttleClick(clearLog));
 
     DOM.onDate?.addEventListener('change', () => {
       validateDateNotPast(DOM.onDate);
@@ -635,8 +650,8 @@
     });
 
     // Temp +/- Controls
-    DOM.tempMinusBtn?.addEventListener('click', () => adjustTempStep(-1));
-    DOM.tempPlusBtn?.addEventListener('click', () => adjustTempStep(1));
+    DOM.tempMinusBtn?.addEventListener('click', throttleClick(() => adjustTempStep(-1), 200));
+    DOM.tempPlusBtn?.addEventListener('click', throttleClick(() => adjustTempStep(1), 200));
 
     // Temp Presets Chips (18°C, 20°C, 22°C, 24°C, 25°C, 27°C)
     document.querySelectorAll('.temp-chip').forEach((chip) => {
@@ -654,6 +669,7 @@
       if (state.scheduleMode === 'none') return;
       state.acFan = parseInt(DOM.fanSelect.value, 10);
       state.userModifiedFan = true;
+      state.userModifiedFanUntil = Date.now() + 5000;
       broadcastUiSync('change_control');
       const inWindow = isCurrentlyInWorkingWindow();
       const isRunning = (state.systemState === 'running' || state.acOn) && inWindow;
@@ -663,12 +679,12 @@
       }
     });
 
-    DOM.btnSendMqtt?.addEventListener('click', sendMqttCommandFromUI);
+    DOM.btnSendMqtt?.addEventListener('click', throttleClick(sendMqttCommandFromUI));
 
-    // None/Auto/Manual Mode Toggle
-    DOM.modeNoneBtn?.addEventListener('click', () => setScheduleMode('none'));
-    DOM.modeAutoBtn?.addEventListener('click', () => setScheduleMode('auto'));
-    DOM.modeManualBtn?.addEventListener('click', () => setScheduleMode('manual'));
+    // None/Auto/Manual Mode Toggle (Throttled & Optimistic Lock)
+    DOM.modeNoneBtn?.addEventListener('click', throttleClick(() => setScheduleMode('none')));
+    DOM.modeAutoBtn?.addEventListener('click', throttleClick(() => setScheduleMode('auto')));
+    DOM.modeManualBtn?.addEventListener('click', throttleClick(() => setScheduleMode('manual')));
 
     // User Manual Modal Events
     DOM.openManualBtn?.addEventListener('click', openManualModal);
@@ -777,6 +793,7 @@
 
     if (isUserAction) {
       state.userModifiedTemp = true;
+      state.userModifiedTempUntil = Date.now() + 5000;
       broadcastUiSync('change_control');
       const inWindow = isCurrentlyInWorkingWindow();
       const isRunning = (state.systemState === 'running' || state.acOn) && inWindow;
@@ -974,6 +991,7 @@
       return;
     }
 
+    state.userModifiedModeUntil = Date.now() + 5000;
     state.scheduleMode = mode;
     applyScheduleMode(mode);
     saveSettings();
@@ -1764,21 +1782,24 @@
   // Handle incoming status payload from ESP32 (Actual State Readback)
   function handleMqttStatus(mqttData) {
     if (!mqttData || typeof mqttData !== 'object') return;
+    const now = Date.now();
 
-    // Real-Time Mode Readback from PLC Coils (M9=NONE, M100=MANUAL, M101=AUTO)
-    let plcMode = null;
-    if (mqttData.m101_auto === 1 || mqttData.mode_auto === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'auto')) {
-      plcMode = 'auto';
-    } else if (mqttData.m100_manual === 1 || mqttData.mode_manual === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'manual')) {
-      plcMode = 'manual';
-    } else if (mqttData.m9_none === 1 || mqttData.mode_none === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'none')) {
-      plcMode = 'none';
-    }
+    // Real-Time Mode Readback from PLC Coils (M9=NONE, M100=MANUAL, M101=AUTO) with 5s Optimistic Lock
+    if (now > state.userModifiedModeUntil) {
+      let plcMode = null;
+      if (mqttData.m101_auto === 1 || mqttData.mode_auto === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'auto')) {
+        plcMode = 'auto';
+      } else if (mqttData.m100_manual === 1 || mqttData.mode_manual === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'manual')) {
+        plcMode = 'manual';
+      } else if (mqttData.m9_none === 1 || mqttData.mode_none === 1 || (mqttData.schedule_mode && mqttData.schedule_mode.toLowerCase() === 'none')) {
+        plcMode = 'none';
+      }
 
-    if (plcMode && state.scheduleMode !== plcMode) {
-      state.scheduleMode = plcMode;
-      applyScheduleMode(plcMode);
-      updateScheduleInputsState();
+      if (plcMode && state.scheduleMode !== plcMode) {
+        state.scheduleMode = plcMode;
+        applyScheduleMode(plcMode);
+        updateScheduleInputsState();
+      }
     }
 
     // HMI Manual Mode M5 Start Trigger Synchronization (อิงเวลาเริ่มตามเวลากด M5 บน HMI)
@@ -1872,13 +1893,13 @@
 
     // In NONE mode, keep inputs blank / empty as requested by user
     if (state.scheduleMode !== 'none') {
-      if (mqttData.power !== undefined && !state.userModifiedPower) {
+      if (mqttData.power !== undefined && now > state.userModifiedPowerUntil && !state.userModifiedPower) {
         state.acPower = Number(mqttData.power);
         state.acOn = (state.acPower === 1);
         updateControlButtons();
       }
 
-      if (mqttData.temperature !== undefined && !state.userModifiedTemp) {
+      if (mqttData.temperature !== undefined && now > state.userModifiedTempUntil && !state.userModifiedTemp) {
         const t = parseFloat(mqttData.temperature);
         if (!isNaN(t) && t >= 18 && t <= 27) {
           state.targetTemp = t;
@@ -1893,14 +1914,14 @@
         }
       }
 
-      if (mqttData.mode !== undefined && !state.userModifiedMode) {
+      if (mqttData.mode !== undefined && now > state.userModifiedModeUntil && !state.userModifiedMode) {
         state.acMode = Number(mqttData.mode);
         if (DOM.modeSelect && document.activeElement !== DOM.modeSelect) {
           DOM.modeSelect.value = state.acMode;
         }
       }
 
-      if (mqttData.fan !== undefined && !state.userModifiedFan) {
+      if (mqttData.fan !== undefined && now > state.userModifiedFanUntil && !state.userModifiedFan) {
         state.acFan = Number(mqttData.fan);
         if (DOM.fanSelect && document.activeElement !== DOM.fanSelect) {
           DOM.fanSelect.value = state.acFan;
@@ -2322,7 +2343,7 @@
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
-        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = '';
+        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'ระบบล็อกอยู่';
       }
       if (DOM.btnStart) {
         DOM.btnStart.disabled = true;
@@ -2330,6 +2351,7 @@
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
+        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดเพื่อปลดล็อก';
       }
 
       // Lock all controls, mode toggles, and inputs during TIMEOUT / STOPPED state
@@ -2369,16 +2391,17 @@
 
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
-        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'กรุณาสลับโหมดเพื่อเริ่มใช้งาน';
+        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'เลือกโหมดเพื่อเริ่ม';
         DOM.btnSave.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnStart) {
         DOM.btnStart.disabled = true;
-        if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'กรุณาสลับโหมดเพื่อเริ่มใช้งาน';
+        if (DOM.btnStartHint) DOM.btnStartHint.textContent = 'เลือกโหมดเพื่อเริ่ม';
         DOM.btnStart.title = 'โหมด NONE ไม่สามารถใช้งานได้';
       }
       if (DOM.btnReset) {
         DOM.btnReset.disabled = false;
+        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดเพื่อรีเซท';
         DOM.btnReset.title = 'กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ';
       }
 
@@ -2390,7 +2413,7 @@
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้, กดส่ง MQTT ได้, กดหยุดได้เมื่อถึงเวลาทำงาน)
+    // 3. โหมด AUTO: เวลาฟิกซ์ 08:00 - 17:00 (ปรับอุณหภูมิได้)
     // ──────────────────────────────────────────────────────────────
     if (isAuto) {
       if (DOM.onDate) DOM.onDate.disabled = true;
@@ -2407,27 +2430,20 @@
       if (DOM.btnSendMqtt) DOM.btnSendMqtt.disabled = false;
       document.querySelectorAll('.temp-chip').forEach(chip => chip.disabled = false);
 
-      // ล็อกทุกปุ่มยกเว้นรีเซท
+      // ล็อกปุ่มบันทึกและเริ่ม เพราะ AUTO ทำงานตามเวลาฟิกซ์
       if (DOM.btnSave) {
         DOM.btnSave.disabled = true;
-        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'โหมด AUTO ฟิกซ์เวลาแล้ว';
+        if (DOM.btnSaveHint) DOM.btnSaveHint.textContent = 'เวลาฟิกซ์ 08:00-17:00';
         DOM.btnSave.title = 'โหมด AUTO ฟิกซ์เวลาอัตโนมัติ';
       }
       if (DOM.btnStart) {
         DOM.btnStart.disabled = true;
-        if (DOM.btnStartHint) DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงานอัตโนมัติ' : 'ทำงานอัตโนมัติตามเวลา';
+        if (DOM.btnStartHint) DOM.btnStartHint.textContent = (state.systemState === 'running') ? 'กำลังทำงานอัตโนมัติ' : 'ทำงานตามเวลา 08:00';
         DOM.btnStart.title = 'โหมด AUTO ทำงานอัตโนมัติ';
       }
-      // ปุ่มหยุดทำงาน: ปลดล็อกให้กดได้เมื่อถึงเวลาทำงาน (running)
-      if (DOM.btnStop) {
-        DOM.btnStop.disabled = (state.systemState !== 'running');
-        if (DOM.btnStopHint) {
-          DOM.btnStopHint.textContent = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน' : 'กดได้เมื่อถึงเวลาทำงาน';
-        }
-        DOM.btnStop.title = (state.systemState === 'running') ? 'กดเพื่อหยุดการทำงาน (OFF)' : 'สามารถกดหยุดได้เมื่อถึงเวลาทำงาน (08:00 - 17:00)';
-      }
       if (DOM.btnReset) {
-        DOM.btnReset.disabled = false; // กดได้เฉพาะปุ่มรีเซท!
+        DOM.btnReset.disabled = false;
+        if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดกลับสู่ NONE';
       }
 
       // ปลดล็อกปุ่มสลับโหมด
@@ -2504,6 +2520,7 @@
     // ปุ่มรีเซท: สามารถกดรีเซทได้เสมอในโหมด MANUAL
     if (DOM.btnReset) {
       DOM.btnReset.disabled = false;
+      if (DOM.btnResetHint) DOM.btnResetHint.textContent = 'กดเพื่อรีเซท';
     }
   }
 
@@ -2726,6 +2743,10 @@
     state.irTransmitting = false;
     state.preStopWarned = false;
     state.systemState = 'idle';
+
+    state.userActionUntil = Date.now() + 5000;
+    state.userModifiedModeUntil = Date.now() + 5000;
+    state.userModifiedPowerUntil = Date.now() + 5000;
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)
     sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 1, 0, 0, 0, 0, 0, false, 0, 1);

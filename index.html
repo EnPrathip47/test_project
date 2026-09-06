@@ -382,27 +382,28 @@
                 <span>ปุ่มคำสั่งควบคุมระบบ & เปิด-ปิดเครื่องปรับอากาศ</span>
               </div>
 
-              <!-- Sub-section 2: System Action Buttons (Unified Start/ON & Stop/OFF) -->
+              <!-- Sub-section 2: System Action Buttons (Unified Start/ON & Reset) -->
               <div class="action-subpanel">
                 <div class="action-buttons">
-                  <button class="action-btn action-btn--save" id="btnSave">
+                  <button type="button" class="action-btn action-btn--save" id="btnSave">
                     <div class="action-btn__icon">💾</div>
                     <div class="action-btn__text">
                       <span class="action-btn__label">บันทึกค่า</span>
-                      <span class="action-btn__hint" id="btnSaveHint"></span>
+                      <span class="action-btn__hint" id="btnSaveHint">ตั้งเวลาและบันทึก</span>
                     </div>
                   </button>
-                  <button class="action-btn action-btn--start" id="btnStart" disabled title="กรุณากดบันทึกเวลาก่อนกดเริ่มทำงาน">
+                  <button type="button" class="action-btn action-btn--start" id="btnStart" disabled title="กรุณากดบันทึกเวลาก่อนกดเริ่มทำงาน">
                     <div class="action-btn__icon">🟢</div>
                     <div class="action-btn__text">
                       <span class="action-btn__label">เริ่มทำงาน (ON)</span>
                       <span class="action-btn__hint" id="btnStartHint">ต้องกดบันทึกค่าก่อน</span>
                     </div>
                   </button>
-                  <button class="action-btn action-btn--reset" id="btnReset" title="กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ">
+                  <button type="button" class="action-btn action-btn--reset" id="btnReset" title="กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ">
                     <div class="action-btn__icon">🔄</div>
                     <div class="action-btn__text">
                       <span class="action-btn__label">รีเซท</span>
+                      <span class="action-btn__hint" id="btnResetHint">กดเพื่อรีเซทระบบ</span>
                     </div>
                   </button>
                 </div>

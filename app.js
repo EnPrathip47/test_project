@@ -64,6 +64,7 @@
     lastCommand: '',
     irTransmitting: false,
     irTimer: null,
+    preStopWarned: false,
 
     // User Pending Modifications (Prevent 5s periodic background status overwrite)
     userModifiedPower: false,
@@ -417,8 +418,7 @@
       }
 
       if (DOM.headerClock) {
-        const isPlcSync = (state.scheduleMode === 'auto' && state.plcRtc?.valid && state.plcOnline);
-        DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false }) + (isPlcSync ? ' (PLC TRD Synced)' : '');
+        DOM.headerClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false });
       }
       checkScheduleState(now);
       updateScheduleSummary();
@@ -473,13 +473,19 @@
           broadcastUiSync('start_ac');
         }
       } else if (state.systemState === 'running') {
+        const autoRemainMs = autoStop.getTime() - now.getTime();
+        if (autoRemainMs > 0 && autoRemainMs <= 5 * 60 * 1000 && !state.preStopWarned) {
+          state.preStopWarned = true;
+          showToast('warning', '⏳ แจ้งเตือน: เหลือเวลาทำงานอีก 5 นาที เครื่องปรับอากาศจะหยุดทำงานอัตโนมัติ (17:00)');
+          addLog('warning', '[แจ้งเตือน] เหลือเวลาทำงานอีก 5 นาที — จะหยุดทำงานเวลา 17:00');
+        }
         if (now >= autoStop) {
           state.acOn = false;
           updateSystemState('timeout');
           sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
           startIrTransmissionLock(5500);
           addLog('warning', `[Schedule] ครบเวลาเปิดเครื่องปรับอากาศ (17:00) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
-          showToast('warning', `ทำงานครบเวลาแล้ว (17:00) — ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+          showToast('warning', `🛑 ทำงานครบเวลาแล้ว (17:00) — ปิดเครื่องปรับอากาศเรียบร้อย (กรุณากดรีเซทเพื่อเริ่มรอบใหม่)`);
         }
       }
       return;
@@ -501,13 +507,19 @@
         broadcastUiSync('start_ac');
       }
     } else if (state.systemState === 'running') {
+      const remainMs = stop.getTime() - now.getTime();
+      if (remainMs > 0 && remainMs <= 5 * 60 * 1000 && !state.preStopWarned) {
+        state.preStopWarned = true;
+        showToast('warning', `⏳ แจ้งเตือน: เหลือเวลาทำงานอีก 5 นาที เครื่องปรับอากาศจะหยุดทำงานอัตโนมัติ (${offTimeVal})`);
+        addLog('warning', `[แจ้งเตือน] เหลือเวลาทำงานอีก 5 นาที — จะหยุดทำงานเวลา ${offTimeVal}`);
+      }
       if (now >= stop) {
         state.acOn = false;
         updateSystemState('timeout');
         sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
         startIrTransmissionLock(5500);
         addLog('warning', `[Schedule] ครบเวลาทำงาน (${offTimeVal}) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
-        showToast('warning', `ทำงานครบเวลาแล้ว (${offTimeVal}) — ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
+        showToast('warning', `🛑 ทำงานครบเวลาแล้ว (${offTimeVal}) — ปิดเครื่องปรับอากาศเรียบร้อย (กรุณากดรีเซทเพื่อเริ่มรอบใหม่)`);
       }
     }
   }
@@ -1653,15 +1665,15 @@
       const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
       if (success) {
         startIrTransmissionLock(5500);
-        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11/M8) สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11/M8) — กำลังยิง IR 10 รอบ`);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
+        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C — กำลังยิง IR 10 รอบ`);
       }
     } else {
       // อยู่ในช่วงเวลาทำงานแต่เครื่องยังไม่ได้รัน
       const success = sendMqttPayload(0, temp, mode, fan, 0, 0, 1, 0);
       if (success) {
-        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C ไปยัง PLC (D11) สำเร็จ`);
-        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C ลง PLC D11`);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C สำเร็จ`);
+        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C สำเร็จ`);
       }
     }
   }
@@ -2582,6 +2594,7 @@
       state.irTimer = null;
     }
     state.irTransmitting = false;
+    state.preStopWarned = false;
     state.systemState = 'idle';
 
     // ส่งคำสั่ง reset=1 ไปยัง ESP32 เพื่อให้ปลดล็อค M500 (Complete Flag = OFF)

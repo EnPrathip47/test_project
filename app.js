@@ -457,12 +457,13 @@
     if (state.scheduleMode === 'auto') {
       const todayIso = getTodayIso();
       const { start, stop: autoStop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
-      if (state.systemState === 'timeout' || state.systemState === 'stopped') {
-        if (now < start) {
-          updateSystemState('ready');
-        }
+
+      // หากอยู่ในสถานะ STOPPED (กดหยุด) หรือ TIMEOUT (ครบเวลา) -> ล็อกระบบไว้ ต้องกดปุ่ม "รีเซท" เท่านั้น!
+      if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+        return;
       }
-      if (state.systemState === 'ready' || state.systemState === 'idle' || !state.acOn) {
+
+      if (state.systemState === 'ready' || state.systemState === 'idle') {
         if (now >= start && now < autoStop) {
           state.acOn = true;
           updateSystemState('running');
@@ -496,7 +497,12 @@
     const stop = parseScheduleDateTime(offDateVal, offTimeVal);
     if (!start || !stop) return;
 
-    if (state.systemState === 'ready' || state.systemState === 'idle' || !state.acOn) {
+    // หากอยู่ในสถานะ STOPPED (กดหยุด) หรือ TIMEOUT (ครบเวลา) -> ล็อกระบบไว้ ต้องกดปุ่ม "รีเซท" เท่านั้น!
+    if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      return;
+    }
+
+    if (state.systemState === 'ready' || state.systemState === 'idle') {
       if (now >= start && now < stop) {
         state.acOn = true;
         updateSystemState('running');
@@ -1764,18 +1770,18 @@
       const isPlcStopped = (mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.m2_red === 1 || mqttData.machine_state === 'stopped');
       const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
 
-      if (isPlcRunning) {
-        if (state.systemState !== 'running') {
-          updateSystemState('running');
-        }
-        state.acOn = true;
-        state.acPower = 1;
-      } else if (isPlcStopped) {
+      if (isPlcStopped || state.systemState === 'stopped' || state.systemState === 'timeout') {
         if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
           updateSystemState('stopped');
         }
         state.acOn = false;
         state.acPower = 0;
+      } else if (isPlcRunning) {
+        if (state.systemState !== 'running') {
+          updateSystemState('running');
+        }
+        state.acOn = true;
+        state.acPower = 1;
       } else if (isPlcIdle) {
         if (state.systemState !== 'idle' && state.systemState !== 'ready') {
           updateSystemState(state.schedule.enabled ? 'ready' : 'idle');

@@ -54,6 +54,10 @@
           <span class="connection-badge__dot"></span>
           <span class="connection-badge__text">ไม่ได้เชื่อมต่อ</span>
         </div>
+        <button type="button" class="header__manual-btn" id="openManualBtn" title="คลิกเพื่ออ่านคู่มือการใช้งานระบบ">
+          <span class="header__manual-btn-icon">📖</span>
+          <span class="header__manual-btn-text">คู่มือการใช้งาน</span>
+        </button>
         <div class="header__clock" id="headerClock">--:--:--</div>
       </div>
     </div>
@@ -395,13 +399,6 @@
                       <span class="action-btn__hint" id="btnStartHint">ต้องกดบันทึกค่าก่อน</span>
                     </div>
                   </button>
-                  <button class="action-btn action-btn--stop" id="btnStop" disabled>
-                    <div class="action-btn__icon">🔴</div>
-                    <div class="action-btn__text">
-                      <span class="action-btn__label">หยุดทำงาน (OFF)</span>
-                      <span class="action-btn__hint" id="btnStopHint">กดได้เมื่อถึงเวลาทำงาน</span>
-                    </div>
-                  </button>
                   <button class="action-btn action-btn--reset" id="btnReset" title="กดเพื่อรีเซทระบบและปิดเครื่องปรับอากาศ">
                     <div class="action-btn__icon">🔄</div>
                     <div class="action-btn__text">
@@ -478,6 +475,419 @@
   <footer class="footer">
     <p>มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตสุรินทร์ &copy; 2026 — ระบบควบคุมเครื่องปรับอากาศ (HiveMQ MQTT Cloud + ESP32-S3)</p>
   </footer>
+
+  <!-- ===== USER MANUAL MODAL (คู่มือการใช้งานระบบ) ===== -->
+  <div class="manual-modal" id="manualModal" aria-hidden="true" role="dialog" aria-labelledby="manualModalTitle">
+    <div class="manual-modal__backdrop" id="manualModalBackdrop"></div>
+    <div class="manual-modal__dialog">
+      <div class="manual-modal__header">
+        <div class="manual-modal__title-group">
+          <div class="manual-modal__icon">📖</div>
+          <div>
+            <h2 class="manual-modal__title" id="manualModalTitle">คู่มือการใช้งานระบบควบคุมเครื่องปรับอากาศ</h2>
+            <p class="manual-modal__subtitle">RMUTI Surin — Air Conditioning Control & Monitoring System (v2.0)</p>
+          </div>
+        </div>
+        <button type="button" class="manual-modal__close-btn" id="closeManualBtn" title="ปิดหน้าต่างคู่มือ (Esc)">✕</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="manual-modal__nav" id="manualModalNav" aria-label="หมวดหมู่คู่มือ">
+        <button type="button" class="manual-nav-btn manual-nav-btn--active" data-tab="tabOverview">
+          <span class="manual-nav-btn__icon">🌐</span>
+          <span>1. ภาพรวม & ลำดับ 4 Step</span>
+        </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabAuto">
+          <span class="manual-nav-btn__icon">🔄</span>
+          <span>2. โหมด AUTO</span>
+        </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabManual">
+          <span class="manual-nav-btn__icon">🛠️</span>
+          <span>3. โหมด MANUAL</span>
+        </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabNone">
+          <span class="manual-nav-btn__icon">⚡</span>
+          <span>4. โหมด NONE</span>
+        </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabPlc">
+          <span class="manual-nav-btn__icon">🔌</span>
+          <span>5. ตาราง Modbus PLC</span>
+        </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabRules">
+          <span class="manual-nav-btn__icon">⚠️</span>
+          <span>6. ข้อควรระวัง & แก้ปัญหา</span>
+        </button>
+      </nav>
+
+      <!-- Modal Body Tab Contents -->
+      <div class="manual-modal__body" id="manualModalBody">
+
+        <!-- TAB 1: OVERVIEW & 4 STEPS -->
+        <div class="manual-tab-pane manual-tab-pane--active" id="tabOverview">
+          <div class="manual-section">
+            <h3 class="manual-section__title">🏗️ สถาปัตยกรรมระบบ (System Architecture)</h3>
+            <p class="manual-desc">
+              ระบบ <strong>PROCESS AIR</strong> เป็นระบบควบคุมและตรวจวัดสถานะเครื่องปรับอากาศแบบ Real-Time ผ่านเทคโนโลยี <strong>HiveMQ Cloud MQTT (WSS Port 8884)</strong> เชื่อมต่อกับบอร์ด <strong>ESP32-S3 Gateway</strong>, ส่งสัญญาณอินฟราเรด (IR RMT Driver) ไปยังเครื่องปรับอากาศ Candy/Haier และสื่อสารกับ <strong>Mitsubishi FX3U PLC</strong> ผ่าน Modbus TCP Gateway (HF2211)
+            </p>
+            
+            <div class="manual-arch-card">
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">💻</div>
+                <div class="manual-arch-label">Web UI Dashboard</div>
+                <div class="manual-arch-sub">WSS Port 8884</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">☁️</div>
+                <div class="manual-arch-label">HiveMQ Cloud</div>
+                <div class="manual-arch-sub">TLS Broker</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">📟</div>
+                <div class="manual-arch-label">ESP32-S3 Gateway</div>
+                <div class="manual-arch-sub">IR 10x Repetitions</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">🎛️</div>
+                <div class="manual-arch-label">PLC FX3U & HMI</div>
+                <div class="manual-arch-sub">Modbus TCP Port 502</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔄 ลำดับ 4 ขั้นตอนการทำงานของระบบ (4-Step System Flow)</h3>
+            <div class="manual-steps-grid">
+              <div class="manual-step-card manual-step-card--idle">
+                <div class="manual-step-header">
+                  <span class="manual-step-badge manual-step-badge--yellow">Step 1</span>
+                  <h4 class="manual-step-title">IDLE (สแตนด์บาย)</h4>
+                </div>
+                <p class="manual-step-text">ไฟสีเหลืองติดค้าง (โหมด NONE) หรือกระพริบ (โหมด MANUAL) ระบบรอรับการตั้งค่าจากผู้ใช้</p>
+                <div class="manual-step-footer">💡 หลอดไฟเหลือง = ON, แอร์ = OFF</div>
+              </div>
+
+              <div class="manual-step-card manual-step-card--ready">
+                <div class="manual-step-header">
+                  <span class="manual-step-badge manual-step-badge--green">Step 2</span>
+                  <h4 class="manual-step-title">READY (พร้อมทำงาน)</h4>
+                </div>
+                <p class="manual-step-text">บันทึกวันเวลาและอุณหภูมิเรียบร้อยแล้ว ไฟสีเขียวกระพริบ (Blink 1s) กำลังนับถอยหลังรอเวลาเปิดแอร์</p>
+                <div class="manual-step-footer">💡 หลอดไฟเขียว = Blink (1s), แอร์ = OFF</div>
+              </div>
+
+              <div class="manual-step-card manual-step-card--running">
+                <div class="manual-step-header">
+                  <span class="manual-step-badge manual-step-badge--green">Step 3</span>
+                  <h4 class="manual-step-title">RUNNING (กำลังทำงาน)</h4>
+                </div>
+                <p class="manual-step-text">ถึงเวลาเปิดแอร์ หรือกดปุ่มเริ่มทำงาน ระบบยิงสัญญาณ IR เปิดแอร์ 10 ครั้ง ไฟเขียวติดค้าง</p>
+                <div class="manual-step-footer">💡 หลอดไฟเขียว = Solid ON, แอร์ = ON</div>
+              </div>
+
+              <div class="manual-step-card manual-step-card--timeout">
+                <div class="manual-step-header">
+                  <span class="manual-step-badge manual-step-badge--red">Step 4</span>
+                  <h4 class="manual-step-title">TIMEOUT (ครบเวลา/หยุด)</h4>
+                </div>
+                <p class="manual-step-text">ครบเวลาปิดแอร์ ระบบยิง IR ปิดแอร์ 10 ครั้ง ไฟสีแดงติดค้าง (M2/M12) และล็อกระบบ ต้องกด <strong>"รีเซท"</strong> เท่านั้น</p>
+                <div class="manual-step-footer">💡 หลอดไฟแดง (M2/M12) = ON, แอร์ = OFF</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: AUTO MODE -->
+        <div class="manual-tab-pane" id="tabAuto">
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔄 โหมด AUTO (อัตโนมัติประจำวัน 08:00 - 17:00)</h3>
+            <p class="manual-desc">
+              โหมดนี้ทำงานตามเวลามาตรฐานของสำนักงาน/ห้องเรียน โดย <strong>เวลาเปิดฟิกซ์ไว้ที่ 08:00 น.</strong> และ <strong>เวลาปิดฟิกซ์ไว้ที่ 17:00 น.</strong> ทุกวัน ผู้ใช้งานสามารถปรับได้เฉพาะอุณหภูมิเป้าหมาย (18°C - 27°C)
+            </p>
+
+            <div class="manual-callout manual-callout--info">
+              <div class="manual-callout__icon">💡</div>
+              <div class="manual-callout__content">
+                <strong>ตรรกะการทำงานของ PLC (M101 Active):</strong>
+                <ul>
+                  <li>เมื่อสลับมาโหมด AUTO ระบบจะ SET Coil <strong>M101 = 1</strong> และ RESET <strong>M100 = 0, M9 = 0</strong></li>
+                  <li>ช่วงเวลา <strong>08:00 - 17:00 น.</strong> แอร์จะเข้าสู่สถานะ RUNNING (ไฟเขียวติดค้าง) โดยอัตโนมัติ</li>
+                  <li>เมื่อถึงเวลา <strong>17:00 น.</strong> ระบบจะ SET <strong>M500 = 1</strong> (Timeout Lock) ยิง IR ปิดแอร์ 10 รอบ และไฟแดงติดค้าง</li>
+                </ul>
+              </div>
+            </div>
+
+            <h4 class="manual-subtitle">📋 ขั้นตอนการใช้งานโหมด AUTO:</h4>
+            <ol class="manual-list">
+              <li>คลิกปุ่มสลับโหมด <strong>"AUTO"</strong> บนแผงควบคุม</li>
+              <li>ปรับอุณหภูมิเป้าหมายที่ต้องการ (18°C - 27°C) ผ่านปุ่ม <strong>[ - ]</strong> หรือ <strong>[ + ]</strong></li>
+              <li>คลิกปุ่ม <strong>"💾 บันทึกตั้งเวลา"</strong> (ส่งค่า M42, M8, M101 ไปยัง PLC)</li>
+              <li>หากอยู่ในช่วงเวลา 08:00-17:00 แล้วแอร์ยังไม่เปิด สามารถกดปุ่ม <strong>"▶️ เริ่มทำงาน"</strong> เพื่อสั่งยิง IR เปิดแอร์ทันทีได้</li>
+              <li>เมื่อหมดวันเวลา 17:00 น. ไฟแดงจะติดค้าง ให้กดปุ่ม <strong>"🔄 รีเซท"</strong> เพื่อเริ่มรอบวันถัดไป</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- TAB 3: MANUAL MODE -->
+        <div class="manual-tab-pane" id="tabManual">
+          <div class="manual-section">
+            <h3 class="manual-section__title">🛠️ โหมด MANUAL (กำหนดเวลาเปิด-ปิดและอุณหภูมิอิสระ)</h3>
+            <p class="manual-desc">
+              โหมดนี้ให้ความยืดหยุ่นสูงสุด สามารถกำหนด <strong>วันที่และเวลาเปิด (Start Time)</strong> รวมถึง <strong>วันที่และเวลาปิด (Stop Time D500-D504)</strong> ได้อย่างอิสระ
+            </p>
+
+            <div class="manual-callout manual-callout--warning">
+              <div class="manual-callout__icon">⏰</div>
+              <div class="manual-callout__content">
+                <strong>เงื่อนไขความถูกต้องของเวลา (Validation Rules):</strong>
+                <ul>
+                  <li>เวลาปิด (Stop Time) <strong>ต้องมากกว่า</strong> เวลาเปิด (Start Time) เสมอ</li>
+                  <li>ไม่อนุญาตให้เลือกวันที่ย้อนหลัง (ระบบจะปรับเป็นวันปัจจุบันให้อัตโนมัติ)</li>
+                  <li>ค่าเวลาปิดจะถูกส่งไปเก็บใน PLC Register <strong>D500 (ปี), D501 (เดือน), D502 (วัน), D503 (ชม.), D504 (นาที)</strong></li>
+                </ul>
+              </div>
+            </div>
+
+            <h4 class="manual-subtitle">📋 ขั้นตอนการใช้งานโหมด MANUAL:</h4>
+            <ol class="manual-list">
+              <li>คลิกปุ่มสลับโหมด <strong>"MANUAL"</strong> (Coil M100 = 1)</li>
+              <li>เลือก <strong>วันที่เปิด</strong> และ <strong>เวลาเปิด (ชั่วโมง : นาที)</strong></li>
+              <li>เลือก <strong>วันที่ปิด</strong> และ <strong>เวลาปิด (ชั่วโมง : นาที)</strong></li>
+              <li>กำหนด <strong>อุณหภูมิเป้าหมาย</strong> (18°C ถึง 27°C)</li>
+              <li>คลิกปุ่ม <strong>"💾 บันทึกตั้งเวลา"</strong> (ส่งค่าเข้า D500-D504, D11, M42)</li>
+              <li>ระบบจะเข้าสู่สถานะ <strong>READY (ไฟเขียวกระพริบ)</strong> เพื่อนับถอยหลังรอเวลา หรือสามารถกด <strong>"▶️ เริ่มทำงาน"</strong> เพื่อเปิดแอร์ทันที</li>
+              <li>เมื่อถึงเวลาปิดที่กำหนด ระบบจะยิง IR ปิดแอร์ 10 รอบ และไฟแดงติดค้าง (M2/M12) ให้กด <strong>"🔄 รีเซท"</strong> เพื่อสแตนด์บายรอบใหม่</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- TAB 4: NONE MODE -->
+        <div class="manual-tab-pane" id="tabNone">
+          <div class="manual-section">
+            <h3 class="manual-section__title">⚡ โหมด NONE (โหมดสแตนด์บาย / สั่งงานตรง)</h3>
+            <p class="manual-desc">
+              เป็นโหมดเริ่มต้นเมื่อเปิดระบบครั้งแรก หรือหลังจากกดปุ่ม <strong>"รีเซท"</strong> เพื่อความปลอดภัยสูงสุด ระบบจะไม่ทำงานตามเวลาใดๆ จนกว่าผู้ใช้จะเลือกโหมดและบันทึกค่า
+            </p>
+
+            <div class="manual-callout manual-callout--info">
+              <div class="manual-callout__icon">🛡️</div>
+              <div class="manual-callout__content">
+                <strong>ลักษณะเด่นของโหมด NONE:</strong>
+                <ul>
+                  <li>Coil <strong>M9 = 1</strong>, ส่วน <strong>M100 = 0 และ M101 = 0</strong></li>
+                  <li>ช่องกรอกวันเวลาจะถูกล็อกชั่วคราว</li>
+                  <li>ไฟสีเหลืองติดค้าง (IDLE Standby)</li>
+                  <li>สามารถส่งคำสั่งปรับอุณหภูมิ เปิด/ปิด ตรงไปยังแอร์ได้อิสระ</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: PLC MODBUS MAPPING -->
+        <div class="manual-tab-pane" id="tabPlc">
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔌 ตารางการเชื่อมต่อ Modbus PLC Mapping (Mitsubishi FX3U)</h3>
+            <p class="manual-desc">
+              ตารางแสดงตำแหน่ง Memory Register และ Coil ภายใน PLC ที่ใช้งานจริงในโปรแกรม:
+            </p>
+
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>Address (PLC)</th>
+                    <th>ประเภท Modbus</th>
+                    <th>ฟังก์ชัน / ความหมาย</th>
+                    <th>รายละเอียดการทำงาน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--red">M2</span></td>
+                    <td>Coil 2</td>
+                    <td>ไฟสีแดง (Red Lamp / Timeout)</td>
+                    <td>แสดงสถานะเครื่องหยุดทำงาน หรือ หมดเวลาทำงาน (Timeout Lock)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--red">M12</span></td>
+                    <td>Coil 12</td>
+                    <td>ไฟสีแดงสำรอง (Red Lamp Relay)</td>
+                    <td>คอยล์สำรองแสดงสถานะไฟแดง (ทำงานควบคู่กับ M2 เพื่อความแม่นยำ)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">M5</span></td>
+                    <td>Coil 5</td>
+                    <td>คำสั่งเริ่มทำงาน (Start Command)</td>
+                    <td>เมื่อสั่งเริ่มทำงาน -> SET M5=1 -> ESP32 ยิง IR เปิดแอร์ 10 ครั้ง</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">M7</span></td>
+                    <td>Coil 7</td>
+                    <td>คำสั่งรีเซทระบบ (Reset Command)</td>
+                    <td>เมื่อกดรีเซท -> SET M7=1 -> เคลียร์ M500=0, M8=0 และกลับสู่ M9=1</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">M8</span></td>
+                    <td>Coil 8</td>
+                    <td>ส่งค่าตั้งค่ารีโมท (MQTT Send)</td>
+                    <td>บันทึกค่าอุณหภูมิลง D11 และส่ง Flag ยืนยันไปยัง PLC</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">M9</span></td>
+                    <td>Coil 9</td>
+                    <td>โหมด NONE (Standby Default)</td>
+                    <td>สถานะเริ่มต้นของระบบหลังจากเปิดเครื่องหรือกดรีเซท</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">M42</span></td>
+                    <td>Coil 42</td>
+                    <td>บันทึกการตั้งเวลา (Save Schedule)</td>
+                    <td>ส่งข้อมูลเวลาปิด D500-D504 เข้าสู่ PLC FX3U</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">M100</span></td>
+                    <td>Coil 100</td>
+                    <td>แฟล็กโหมด MANUAL</td>
+                    <td>เปิดใช้งานระบบตั้งเวลาอิสระ</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">M101</span></td>
+                    <td>Coil 101</td>
+                    <td>แฟล็กโหมด AUTO</td>
+                    <td>เปิดใช้งานระบบอัตโนมัติประจำวัน (08:00 - 17:00)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--red">M500</span></td>
+                    <td>Coil 500</td>
+                    <td>แฟล็กล็อกเมื่อครบเวลา (Timeout Lock)</td>
+                    <td>เมื่อครบเวลาปิดแอร์ จะ SET M500=1 เพื่อล็อกระบบ จนกว่าจะกดรีเซท</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">D0 - D2</span></td>
+                    <td>Holding Reg 0-2</td>
+                    <td>เซนเซอร์อุณหภูมิ 1, 2, 3</td>
+                    <td>D0=ในห้อง, D1=ภายนอก, D2=อินเวอร์เตอร์ (ค่าจริง x10 เช่น 255 = 25.5°C)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">D11</span></td>
+                    <td>Holding Reg 11</td>
+                    <td>อุณหภูมิเป้าหมายของแอร์</td>
+                    <td>กำหนดค่าระหว่าง <strong>18°C ถึง 27°C</strong></td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">D400 - D406</span></td>
+                    <td>Holding Reg 400-406</td>
+                    <td>นาฬิกาจริง RTC ของ PLC (TRD)</td>
+                    <td>D400:ปี, D401:เดือน, D402:วัน, D403:ชม., D404:นาที, D405:วินาที</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">D500 - D504</span></td>
+                    <td>Holding Reg 500-504</td>
+                    <td>เวลาปิดแอร์โหมด Manual (Stop Time)</td>
+                    <td>D500:ปี, D501:เดือน, D502:วัน, D503:ชม., D504:นาที</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 6: RULES & TROUBLESHOOTING -->
+        <div class="manual-tab-pane" id="tabRules">
+          <div class="manual-section">
+            <h3 class="manual-section__title">⚠️ ข้อควรระวังและกฎสำคัญในการใช้งาน (Critical Operational Rules)</h3>
+            
+            <div class="manual-rules-grid">
+              <div class="manual-rule-card manual-rule-card--danger">
+                <div class="manual-rule-icon">🚫</div>
+                <div class="manual-rule-content">
+                  <h4>ไม่มีปุ่ม STOP ในระบบ (No Manual Stop)</h4>
+                  <p>ระบบถูกออกแบบมาให้ปิดเครื่องปรับอากาศผ่าน <strong>เวลาที่กำหนด (Timeout M500)</strong> หรือการกดปุ่ม <strong>"รีเซท (RESET M7)"</strong> เท่านั้น เพื่อป้องกันปัญหาเครื่องหยุดทำงานกะทันหันขณะไม่มีผู้ดูแล</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--danger">
+                <div class="manual-rule-icon">🔒</div>
+                <div class="manual-rule-content">
+                  <h4>เมื่อไฟแดงติดค้าง ต้องกด "รีเซท" ก่อนเสมอ</h4>
+                  <p>เมื่อครบเวลาทำงาน (Step 4: TIMEOUT / ไฟแดงติด) ระบบจะล็อกปุ่มสั่งงานทั้งหมด ผู้ใช้งานจะไม่สามารถเปลี่ยนโหมดหรือเริ่มงานใหม่ได้จนกว่าจะกดปุ่ม <strong>"🔄 รีเซท"</strong> เพื่อเคลียร์สถานะ M500</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">📡</div>
+                <div class="manual-rule-content">
+                  <h4>การส่งสัญญาณ IR ซ้ำ 10 รอบ (IR Transmit Lock)</h4>
+                  <p>เพื่อรับประกันว่าเครื่องปรับอากาศจะได้รับคำสั่ง 100% บอร์ด ESP32-S3 จะยิงสัญญาณ IR ซ้ำ 10 ครั้ง (ใช้เวลาประมาณ 5.5 วินาที) ในระหว่างนี้ระบบจะล็อกปุ่มปรับอุณหภูมิชั่วคราว</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🌡️</div>
+                <div class="manual-rule-content">
+                  <h4>ช่วงอุณหภูมิที่รองรับ</h4>
+                  <p>สามารถปรับอุณหภูมิได้เฉพาะช่วง <strong>18°C ถึง 27°C</strong> เท่านั้น ตามขีดจำกัดความปลอดภัยของ PLC และสเปกเครื่องปรับอากาศ</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔧 การแก้ไขปัญหาเบื้องต้น (Troubleshooting Guide)</h3>
+            <div class="manual-faq-list">
+              <details class="manual-faq-item" open>
+                <summary class="manual-faq-question">❓ ป้ายสถานะ ESP32 / PLC ขึ้นว่า OFFLINE แก้ไขอย่างไร?</summary>
+                <div class="manual-faq-answer">
+                  <ol>
+                    <li>ตรวจสอบว่าบอร์ด ESP32-S3 มีไฟเลี้ยงและเชื่อมต่อ Wi-Fi เรียบร้อยหรือไม่</li>
+                    <li>ตรวจสอบสาย LAN ระหว่าง HF2211 Modbus Gateway และ PLC FX3U</li>
+                    <li>ตรวจสอบค่า Host/Username/Password ในเมนู <em>"การตั้งค่าการเชื่อมต่อ"</em> ด้านล่างหน้าเว็บ</li>
+                  </ol>
+                </div>
+              </details>
+
+              <details class="manual-faq-item">
+                <summary class="manual-faq-question">❓ กดปุ่มเริ่มทำงานหรือปรับอุณหภูมิแล้ว แอร์ไม่ตอบสนอง?</summary>
+                <div class="manual-faq-answer">
+                  <ol>
+                    <li>ตรวจสอบตำแหน่งของหลอด IR LED ที่ต่อกับขา GPIO12 ของ ESP32-S3 ว่าหันตรงกับตัวรับสัญญาณของแอร์หรือไม่</li>
+                    <li>ตรวจสอบว่าระบบอยู่ในสถานะ TIMEOUT (ไฟแดงติด) หรือไม่ หากไฟแดงติดอยู่ให้กดปุ่ม <strong>"รีเซท"</strong> ก่อน</li>
+                  </ol>
+                </div>
+              </details>
+
+              <details class="manual-faq-item">
+                <summary class="manual-faq-question">❓ ปุ่มกดต่างๆ เป็นสีเทา (Disabled) กดไม่ได้?</summary>
+                <div class="manual-faq-answer">
+                  <p>เกิดขึ้นได้จาก 3 กรณี:</p>
+                  <ul>
+                    <li>อยู่ในโหมด <strong>NONE</strong> (ยังไม่ได้เลือกโหมด AUTO หรือ MANUAL)</li>
+                    <li>ระบบกำลังยิงสัญญาณ IR 10 รอบ (รอประมาณ 5 วินาที)</li>
+                    <li>ระบบอยู่ในสถานะ <strong>TIMEOUT (ไฟแดงติด)</strong> ให้กดปุ่ม <strong>"รีเซท"</strong> เพื่อปลดล็อก</li>
+                  </ul>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="manual-modal__footer">
+        <button type="button" class="btn btn--small btn--ghost" id="printManualBtn">
+          <span class="btn__icon">🖨️</span>
+          พิมพ์ / ดาวน์โหลด PDF
+        </button>
+        <button type="button" class="btn btn--small btn--connect" id="closeManualFooterBtn">
+          เข้าใจแล้ว / ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== TOAST NOTIFICATIONS ===== -->
   <div class="toast-container" id="toastContainer"></div>

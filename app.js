@@ -279,6 +279,15 @@
     scheduleGroupOff: document.getElementById('scheduleGroupOff'),
     onDateField: document.getElementById('onDateField'),
     offDateField: document.getElementById('offDateField'),
+
+    // User Manual Modal
+    openManualBtn: document.getElementById('openManualBtn'),
+    manualModal: document.getElementById('manualModal'),
+    manualModalBackdrop: document.getElementById('manualModalBackdrop'),
+    closeManualBtn: document.getElementById('closeManualBtn'),
+    closeManualFooterBtn: document.getElementById('closeManualFooterBtn'),
+    printManualBtn: document.getElementById('printManualBtn'),
+    manualModalNav: document.getElementById('manualModalNav'),
   };
 
   // ── Initialize ──
@@ -660,6 +669,70 @@
     DOM.modeNoneBtn?.addEventListener('click', () => setScheduleMode('none'));
     DOM.modeAutoBtn?.addEventListener('click', () => setScheduleMode('auto'));
     DOM.modeManualBtn?.addEventListener('click', () => setScheduleMode('manual'));
+
+    // User Manual Modal Events
+    DOM.openManualBtn?.addEventListener('click', openManualModal);
+    DOM.closeManualBtn?.addEventListener('click', closeManualModal);
+    DOM.closeManualFooterBtn?.addEventListener('click', closeManualModal);
+    DOM.manualModalBackdrop?.addEventListener('click', closeManualModal);
+    DOM.printManualBtn?.addEventListener('click', () => window.print());
+
+    // Navigation Tab Switching inside Manual Modal
+    document.querySelectorAll('.manual-nav-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab');
+        if (tabId) switchManualTab(tabId);
+      });
+    });
+
+    // Close Modal on Escape key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && DOM.manualModal?.classList.contains('manual-modal--open')) {
+        closeManualModal();
+      }
+    });
+  }
+
+  // ============================================================
+  //  USER MANUAL MODAL CONTROLLER
+  // ============================================================
+
+  function openManualModal() {
+    if (!DOM.manualModal) return;
+    DOM.manualModal.classList.add('manual-modal--open');
+    DOM.manualModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+  }
+
+  function closeManualModal() {
+    if (!DOM.manualModal) return;
+    DOM.manualModal.classList.remove('manual-modal--open');
+    DOM.manualModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  function switchManualTab(tabId) {
+    // Update active state on nav buttons
+    document.querySelectorAll('.manual-nav-btn').forEach((btn) => {
+      if (btn.getAttribute('data-tab') === tabId) {
+        btn.classList.add('manual-nav-btn--active');
+      } else {
+        btn.classList.remove('manual-nav-btn--active');
+      }
+    });
+
+    // Update active state on tab panes
+    document.querySelectorAll('.manual-tab-pane').forEach((pane) => {
+      if (pane.id === tabId) {
+        pane.classList.add('manual-tab-pane--active');
+      } else {
+        pane.classList.remove('manual-tab-pane--active');
+      }
+    });
+
+    // Scroll modal body to top smoothly on tab switch
+    const modalBody = document.getElementById('manualModalBody');
+    if (modalBody) modalBody.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function adjustTempStep(delta) {

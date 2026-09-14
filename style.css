@@ -2181,11 +2181,11 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Print Styles (High-Contrast, No Blank Pages, Full Content PDF Export) */
+/* Print Styles (High-Contrast, Clean 1-2 Page per Topic Pagination) */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 14mm 15mm 14mm;
+    margin: 10mm 12mm 12mm 12mm;
   }
 
   * {
@@ -2226,8 +2226,8 @@ body {
     background: #ffffff !important;
     color: #1e293b !important;
     font-family: 'Kanit', 'Prompt', 'Inter', -apple-system, sans-serif !important;
-    font-size: 10.5pt !important;
-    line-height: 1.5 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.45 !important;
   }
 
   /* Modal Wrapper becomes normal document flow */
@@ -2265,14 +2265,14 @@ body {
     padding: 0 !important;
   }
 
-  /* Modal Header for Print Cover */
+  /* Modal Header for Print Cover / Top Banner */
   .manual-modal__header {
     background: #f8fafc !important;
     border: 1px solid #cbd5e1 !important;
     border-left: 6px solid #0284c7 !important;
     border-radius: 6px !important;
-    padding: 12px 16px !important;
-    margin-bottom: 24px !important;
+    padding: 10px 14px !important;
+    margin-bottom: 16px !important;
     break-after: avoid !important;
     page-break-after: avoid !important;
   }
@@ -2280,27 +2280,27 @@ body {
   .manual-modal__title-group {
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
+    gap: 10px !important;
   }
 
   .manual-modal__icon {
-    font-size: 1.8rem !important;
+    font-size: 1.5rem !important;
     background: #e0f2fe !important;
     border: 1px solid #bae6fd !important;
     border-radius: 8px !important;
-    padding: 6px !important;
+    padding: 4px 6px !important;
   }
 
   .manual-modal__title {
     color: #0f172a !important;
-    font-size: 15pt !important;
+    font-size: 13.5pt !important;
     font-weight: 700 !important;
     margin: 0 !important;
   }
 
   .manual-modal__subtitle {
     color: #475569 !important;
-    font-size: 9.5pt !important;
+    font-size: 8.5pt !important;
     margin: 2px 0 0 !important;
   }
 
@@ -2314,71 +2314,79 @@ body {
     color: #1e293b !important;
   }
 
-  /* Display all tab panes clearly */
+  /* ─────────────────────────────────────────────────────────────
+     TOPIC PAGINATION: Each Topic starts on a new Page (1-2 Pages each)
+     ───────────────────────────────────────────────────────────── */
   .manual-tab-pane {
     display: block !important;
     opacity: 1 !important;
     visibility: visible !important;
     animation: none !important;
     transform: none !important;
-    margin-bottom: 24px !important;
-    padding-bottom: 18px !important;
-    border-bottom: 1.5px dashed #cbd5e1 !important;
+    break-before: page !important;
+    page-break-before: always !important;
+    break-after: auto !important;
+    page-break-after: auto !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+    margin: 0 0 16px 0 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
   }
 
-  .manual-tab-pane:last-child {
-    border-bottom: none !important;
-    margin-bottom: 0 !important;
-    padding-bottom: 0 !important;
+  /* First tab (Overview) stays on page 1 with modal header */
+  .manual-tab-pane:first-of-type,
+  #tabOverview {
+    break-before: auto !important;
+    page-break-before: auto !important;
   }
 
   /* Sections and Titles */
   .manual-section {
-    margin-bottom: 18px !important;
-    break-inside: auto !important;
-    page-break-inside: auto !important;
+    margin-bottom: 12px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .manual-section__title {
     color: #0369a1 !important;
-    font-size: 12.5pt !important;
+    font-size: 11.5pt !important;
     font-weight: 700 !important;
     border-bottom: 1.5px solid #e2e8f0 !important;
-    padding-bottom: 5px !important;
-    margin: 16px 0 10px !important;
+    padding-bottom: 4px !important;
+    margin: 8px 0 6px !important;
     break-after: avoid !important;
     page-break-after: avoid !important;
   }
 
   .manual-subtitle {
     color: #0f172a !important;
-    font-size: 11pt !important;
+    font-size: 10pt !important;
     font-weight: 600 !important;
-    margin: 12px 0 6px !important;
+    margin: 8px 0 4px !important;
     break-after: avoid !important;
     page-break-after: avoid !important;
   }
 
   .manual-desc, p, span, li {
     color: #334155 !important;
-    font-size: 10pt !important;
+    font-size: 9pt !important;
+    line-height: 1.4 !important;
   }
 
   .manual-list {
-    margin: 0 0 10px !important;
-    padding-left: 20px !important;
+    margin: 0 0 8px !important;
+    padding-left: 18px !important;
   }
 
   .manual-list li {
-    margin-bottom: 4px !important;
+    margin-bottom: 3px !important;
   }
 
   /* Tables */
   .manual-table-responsive {
     overflow: visible !important;
-    margin: 10px 0 !important;
+    margin: 6px 0 !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 6px !important;
     background: #ffffff !important;
@@ -2389,7 +2397,7 @@ body {
   .manual-table {
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 9pt !important;
+    font-size: 8.2pt !important;
   }
 
   .manual-table th {
@@ -2397,14 +2405,14 @@ body {
     color: #0f172a !important;
     border: 1px solid #cbd5e1 !important;
     font-weight: 700 !important;
-    padding: 6px 8px !important;
+    padding: 4px 6px !important;
     text-align: left !important;
   }
 
   .manual-table td {
     border: 1px solid #e2e8f0 !important;
     color: #1e293b !important;
-    padding: 5px 8px !important;
+    padding: 3.5px 6px !important;
   }
 
   .manual-table tr {
@@ -2418,11 +2426,12 @@ body {
     border: 1px solid #7dd3fc !important;
     border-left: 4px solid #0284c7 !important;
     color: #0369a1 !important;
-    padding: 10px 12px !important;
+    padding: 6px 10px !important;
     border-radius: 6px !important;
-    margin: 10px 0 !important;
+    margin: 6px 0 !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+    font-size: 8.5pt !important;
   }
 
   .manual-callout strong {
@@ -2444,9 +2453,9 @@ body {
   .manual-arch-card {
     background: #f8fafc !important;
     border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important;
-    padding: 10px 12px !important;
-    margin: 10px 0 !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    margin: 6px 0 !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -2455,25 +2464,27 @@ body {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 6px !important;
-    padding: 6px 10px !important;
+    padding: 5px 8px !important;
     color: #0f172a !important;
+    min-width: 90px !important;
   }
 
   .manual-arch-item__name, .manual-arch-label {
     color: #0f172a !important;
     font-weight: 700 !important;
-    font-size: 9pt !important;
+    font-size: 8.5pt !important;
   }
 
   .manual-arch-item__desc, .manual-arch-sub {
     color: #0369a1 !important;
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
     font-family: monospace !important;
   }
 
   .manual-arch-arrow {
     color: #0284c7 !important;
     font-weight: bold !important;
+    font-size: 10pt !important;
   }
 
   /* Step Cards & Rules Grid */
@@ -2481,9 +2492,10 @@ body {
   .manual-rules-grid {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px !important;
-    margin: 10px 0 !important;
-    break-inside: auto !important;
+    gap: 8px !important;
+    margin: 6px 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .manual-step-card,
@@ -2491,7 +2503,7 @@ body {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 6px !important;
-    padding: 10px !important;
+    padding: 7px 9px !important;
     color: #1e293b !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -2500,24 +2512,24 @@ body {
   .manual-step-title,
   .manual-rule-content h4 {
     color: #0f172a !important;
-    font-size: 9.5pt !important;
+    font-size: 9pt !important;
     font-weight: 700 !important;
-    margin: 0 0 4px !important;
+    margin: 0 0 3px !important;
   }
 
   .manual-step-text,
   .manual-rule-content p {
     color: #334155 !important;
-    font-size: 8.5pt !important;
-    line-height: 1.4 !important;
+    font-size: 8pt !important;
+    line-height: 1.35 !important;
   }
 
   .manual-step-footer {
     color: #475569 !important;
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
     border-top: 1px solid #e2e8f0 !important;
-    padding-top: 4px !important;
-    margin-top: 6px !important;
+    padding-top: 3px !important;
+    margin-top: 4px !important;
   }
 
   .manual-rule-card--danger {
@@ -2537,7 +2549,7 @@ body {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 6px !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
     overflow: hidden !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -2547,26 +2559,26 @@ body {
     background: #f8fafc !important;
     color: #0f172a !important;
     font-weight: 700 !important;
-    font-size: 9pt !important;
-    padding: 8px 12px !important;
+    font-size: 8.5pt !important;
+    padding: 5px 8px !important;
     border-bottom: 1px solid #e2e8f0 !important;
   }
 
   .manual-faq-answer {
     background: #ffffff !important;
     color: #334155 !important;
-    font-size: 8.5pt !important;
-    padding: 8px 12px !important;
+    font-size: 8pt !important;
+    padding: 5px 8px !important;
   }
 
   /* Tags and Badges */
   .manual-tag {
     display: inline-block !important;
-    padding: 1px 6px !important;
+    padding: 1px 5px !important;
     border-radius: 4px !important;
     font-family: monospace !important;
     font-weight: 700 !important;
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
     border: 1px solid #94a3b8 !important;
     background: #f1f5f9 !important;
     color: #0f172a !important;
@@ -2609,9 +2621,9 @@ body {
   }
 
   .manual-step-badge {
-    padding: 1px 5px !important;
-    font-size: 7.5pt !important;
-    border-radius: 4px !important;
+    padding: 1px 4px !important;
+    font-size: 7pt !important;
+    border-radius: 3px !important;
     font-weight: 700 !important;
   }
 
@@ -2638,9 +2650,9 @@ body {
     background: #f1f5f9 !important;
     color: #0f172a !important;
     border: 1px solid #e2e8f0 !important;
-    padding: 1px 4px !important;
-    border-radius: 4px !important;
-    font-size: 8.5pt !important;
+    padding: 1px 3px !important;
+    border-radius: 3px !important;
+    font-size: 8pt !important;
     font-family: monospace !important;
   }
 
@@ -2648,15 +2660,16 @@ body {
     background: #f8fafc !important;
     color: #0f172a !important;
     border: 1px solid #cbd5e1 !important;
-    padding: 8px 10px !important;
-    border-radius: 6px !important;
-    font-size: 8pt !important;
-    line-height: 1.35 !important;
+    padding: 6px 8px !important;
+    border-radius: 4px !important;
+    font-size: 7.5pt !important;
+    line-height: 1.3 !important;
     white-space: pre-wrap !important;
-    word-break: break-word !important;
+    word-break: break-all !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 }
+
 
 

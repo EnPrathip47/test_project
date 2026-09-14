@@ -2181,37 +2181,482 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Print Styles */
+/* Print Styles (High-Contrast, No Blank Pages, Full Content PDF Export) */
 @media print {
-  body * {
-    visibility: hidden !important;
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm 15mm 14mm;
   }
-  .manual-modal, .manual-modal * {
-    visibility: visible !important;
-  }
-  .manual-modal {
-    position: absolute !important;
-    inset: 0 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    padding: 0 !important;
-  }
-  .manual-modal__dialog {
-    max-width: 100% !important;
-    max-height: none !important;
-    background: #ffffff !important;
-    color: #000000 !important;
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    text-shadow: none !important;
     box-shadow: none !important;
-    border: none !important;
   }
-  .manual-tab-pane {
-    display: block !important;
-    page-break-after: always;
-  }
+
+  /* Hide everything outside the manual modal */
+  #bgParticles,
+  .bg-particles,
+  #header,
+  .header,
+  main,
+  .main,
+  footer,
+  .footer,
+  #toastContainer,
+  .toast-container,
+  .manual-modal__backdrop,
   .manual-modal__nav,
   .manual-modal__close-btn,
-  .manual-modal__footer {
+  .manual-modal__footer,
+  .manual-modal-nav {
     display: none !important;
   }
+
+  /* Reset body and html layout for continuous multi-page printing */
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    font-family: 'Kanit', 'Prompt', 'Inter', -apple-system, sans-serif !important;
+    font-size: 10.5pt !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Modal Wrapper becomes normal document flow */
+  .manual-modal {
+    position: static !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    transform: none !important;
+  }
+
+  .manual-modal__dialog {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Modal Header for Print Cover */
+  .manual-modal__header {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-left: 6px solid #0284c7 !important;
+    border-radius: 6px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 24px !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .manual-modal__title-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+
+  .manual-modal__icon {
+    font-size: 1.8rem !important;
+    background: #e0f2fe !important;
+    border: 1px solid #bae6fd !important;
+    border-radius: 8px !important;
+    padding: 6px !important;
+  }
+
+  .manual-modal__title {
+    color: #0f172a !important;
+    font-size: 15pt !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+  }
+
+  .manual-modal__subtitle {
+    color: #475569 !important;
+    font-size: 9.5pt !important;
+    margin: 2px 0 0 !important;
+  }
+
+  /* Modal Body */
+  .manual-modal__body {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    color: #1e293b !important;
+  }
+
+  /* Display all tab panes clearly */
+  .manual-tab-pane {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transform: none !important;
+    margin-bottom: 24px !important;
+    padding-bottom: 18px !important;
+    border-bottom: 1.5px dashed #cbd5e1 !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .manual-tab-pane:last-child {
+    border-bottom: none !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Sections and Titles */
+  .manual-section {
+    margin-bottom: 18px !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .manual-section__title {
+    color: #0369a1 !important;
+    font-size: 12.5pt !important;
+    font-weight: 700 !important;
+    border-bottom: 1.5px solid #e2e8f0 !important;
+    padding-bottom: 5px !important;
+    margin: 16px 0 10px !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .manual-subtitle {
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    font-weight: 600 !important;
+    margin: 12px 0 6px !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .manual-desc, p, span, li {
+    color: #334155 !important;
+    font-size: 10pt !important;
+  }
+
+  .manual-list {
+    margin: 0 0 10px !important;
+    padding-left: 20px !important;
+  }
+
+  .manual-list li {
+    margin-bottom: 4px !important;
+  }
+
+  /* Tables */
+  .manual-table-responsive {
+    overflow: visible !important;
+    margin: 10px 0 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .manual-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9pt !important;
+  }
+
+  .manual-table th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    font-weight: 700 !important;
+    padding: 6px 8px !important;
+    text-align: left !important;
+  }
+
+  .manual-table td {
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    padding: 5px 8px !important;
+  }
+
+  .manual-table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Callout Boxes */
+  .manual-callout {
+    background: #f0f9ff !important;
+    border: 1px solid #7dd3fc !important;
+    border-left: 4px solid #0284c7 !important;
+    color: #0369a1 !important;
+    padding: 10px 12px !important;
+    border-radius: 6px !important;
+    margin: 10px 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .manual-callout strong {
+    color: #0c4a6e !important;
+  }
+
+  .manual-callout--warning {
+    background: #fefce8 !important;
+    border-color: #fde047 !important;
+    border-left: 4px solid #ca8a04 !important;
+    color: #854d0e !important;
+  }
+
+  .manual-callout--warning strong {
+    color: #713f12 !important;
+  }
+
+  /* Architecture Diagrams & Cards */
+  .manual-arch-card {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    margin: 10px 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .manual-arch-item {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 6px 10px !important;
+    color: #0f172a !important;
+  }
+
+  .manual-arch-item__name, .manual-arch-label {
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    font-size: 9pt !important;
+  }
+
+  .manual-arch-item__desc, .manual-arch-sub {
+    color: #0369a1 !important;
+    font-size: 8pt !important;
+    font-family: monospace !important;
+  }
+
+  .manual-arch-arrow {
+    color: #0284c7 !important;
+    font-weight: bold !important;
+  }
+
+  /* Step Cards & Rules Grid */
+  .manual-steps-grid,
+  .manual-rules-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin: 10px 0 !important;
+    break-inside: auto !important;
+  }
+
+  .manual-step-card,
+  .manual-rule-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 10px !important;
+    color: #1e293b !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .manual-step-title,
+  .manual-rule-content h4 {
+    color: #0f172a !important;
+    font-size: 9.5pt !important;
+    font-weight: 700 !important;
+    margin: 0 0 4px !important;
+  }
+
+  .manual-step-text,
+  .manual-rule-content p {
+    color: #334155 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.4 !important;
+  }
+
+  .manual-step-footer {
+    color: #475569 !important;
+    font-size: 8pt !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding-top: 4px !important;
+    margin-top: 6px !important;
+  }
+
+  .manual-rule-card--danger {
+    border-left: 4px solid #ef4444 !important;
+  }
+
+  .manual-rule-card--warning {
+    border-left: 4px solid #f59e0b !important;
+  }
+
+  .manual-rule-card--info {
+    border-left: 4px solid #0284c7 !important;
+  }
+
+  /* FAQ Accordion Items */
+  .manual-faq-item {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    margin-bottom: 8px !important;
+    overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .manual-faq-question {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    font-size: 9pt !important;
+    padding: 8px 12px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  .manual-faq-answer {
+    background: #ffffff !important;
+    color: #334155 !important;
+    font-size: 8.5pt !important;
+    padding: 8px 12px !important;
+  }
+
+  /* Tags and Badges */
+  .manual-tag {
+    display: inline-block !important;
+    padding: 1px 6px !important;
+    border-radius: 4px !important;
+    font-family: monospace !important;
+    font-weight: 700 !important;
+    font-size: 8pt !important;
+    border: 1px solid #94a3b8 !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  .manual-tag--cyan {
+    background: #e0f2fe !important;
+    color: #0369a1 !important;
+    border-color: #7dd3fc !important;
+  }
+
+  .manual-tag--green {
+    background: #f0fdf4 !important;
+    color: #15803d !important;
+    border-color: #86efac !important;
+  }
+
+  .manual-tag--red {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5 !important;
+  }
+
+  .manual-tag--yellow {
+    background: #fefce8 !important;
+    color: #a16207 !important;
+    border-color: #fde047 !important;
+  }
+
+  .manual-tag--purple {
+    background: #faf5ff !important;
+    color: #7e22ce !important;
+    border-color: #d8b4fe !important;
+  }
+
+  .manual-tag--blue {
+    background: #eff6ff !important;
+    color: #1d4ed8 !important;
+    border-color: #93c5fd !important;
+  }
+
+  .manual-step-badge {
+    padding: 1px 5px !important;
+    font-size: 7.5pt !important;
+    border-radius: 4px !important;
+    font-weight: 700 !important;
+  }
+
+  .manual-step-badge--yellow {
+    background: #fef9c3 !important;
+    color: #854d0e !important;
+    border: 1px solid #fde047 !important;
+  }
+
+  .manual-step-badge--green {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #86efac !important;
+  }
+
+  .manual-step-badge--red {
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fca5a5 !important;
+  }
+
+  /* Code & Pre Blocks */
+  code {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #e2e8f0 !important;
+    padding: 1px 4px !important;
+    border-radius: 4px !important;
+    font-size: 8.5pt !important;
+    font-family: monospace !important;
+  }
+
+  pre {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 10px !important;
+    border-radius: 6px !important;
+    font-size: 8pt !important;
+    line-height: 1.35 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 }
+
 

@@ -64,6 +64,7 @@
     lastCommand: '',
     irTransmitting: false,
     irTimer: null,
+    lastEsp32Heartbeat: 0,
     preStopWarned: false,
 
     // User Pending Modifications (Prevent 5s periodic background status overwrite)
@@ -694,7 +695,26 @@
     DOM.closeManualBtn?.addEventListener('click', closeManualModal);
     DOM.closeManualFooterBtn?.addEventListener('click', closeManualModal);
     DOM.manualModalBackdrop?.addEventListener('click', closeManualModal);
-    DOM.printManualBtn?.addEventListener('click', () => window.print());
+    DOM.printManualBtn?.addEventListener('click', () => {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'visible';
+      window.print();
+      setTimeout(() => {
+        if (DOM.manualModal?.classList.contains('manual-modal--open')) {
+          document.body.style.overflow = 'hidden';
+        }
+      }, 500);
+    });
+
+    window.addEventListener('beforeprint', () => {
+      document.body.style.overflow = 'visible';
+    });
+
+    window.addEventListener('afterprint', () => {
+      if (DOM.manualModal?.classList.contains('manual-modal--open')) {
+        document.body.style.overflow = 'hidden';
+      }
+    });
 
     // Navigation Tab Switching inside Manual Modal
     document.querySelectorAll('.manual-nav-btn').forEach((btn) => {
@@ -2568,13 +2588,6 @@
     if (DOM.powerBtnOn && DOM.powerBtnOff) {
       DOM.powerBtnOn.classList.toggle('mqtt-power-btn--active', val === 1);
       DOM.powerBtnOff.classList.toggle('mqtt-power-btn--active', val === 0);
-    }
-  }
-
-  function updateMqttTempDisplay() {
-    if (DOM.mqttTempDisplay) {
-      const temp = state.targetTemp || 25;
-      DOM.mqttTempDisplay.textContent = `${temp}°C`;
     }
   }
 

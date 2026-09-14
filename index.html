@@ -525,6 +525,10 @@
           <span class="manual-nav-btn__icon">⚠️</span>
           <span>6. ข้อควรระวัง & แก้ปัญหา</span>
         </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabEsp32">
+          <span class="manual-nav-btn__icon">📖</span>
+          <span>7. คู่มือโปรแกรม ESP32</span>
+        </button>
       </nav>
 
       <!-- Modal Body Tab Contents -->
@@ -880,6 +884,471 @@
               </details>
             </div>
           </div>
+        </div>
+
+        <!-- TAB 7: ESP32 PROGRAM GUIDE -->
+        <div class="manual-tab-pane" id="tabEsp32">
+
+          <!-- Section: Overview -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">📖 คู่มือโปรแกรม ESP32-S3 IoT Gateway</h3>
+            <p class="manual-desc">
+              ไฟล์โปรแกรมหลัก: <strong>esp32s3_ir_ac_control.ino</strong> (~1,936 บรรทัด, 16 เซ็กชัน) — ทำหน้าที่เป็น IoT Gateway เชื่อมโยง <strong>Web Dashboard ↔ MQTT Cloud ↔ PLC ↔ IR แอร์</strong> เข้าด้วยกัน
+            </p>
+
+            <div class="manual-arch-card">
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">💻</div>
+                <div class="manual-arch-label">Web Dashboard</div>
+                <div class="manual-arch-sub">MQTT WebSocket :8884</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">☁️</div>
+                <div class="manual-arch-label">HiveMQ Cloud</div>
+                <div class="manual-arch-sub">TLS Port 8883</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">📡</div>
+                <div class="manual-arch-label">ESP32-S3 Gateway</div>
+                <div class="manual-arch-sub">192.168.1.30</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">⚡</div>
+                <div class="manual-arch-label">PLC AMX FX3U</div>
+                <div class="manual-arch-sub">Modbus TCP :502</div>
+              </div>
+              <div class="manual-arch-arrow">➔</div>
+              <div class="manual-arch-item">
+                <div class="manual-arch-icon">❄️</div>
+                <div class="manual-arch-label">แอร์ Candy</div>
+                <div class="manual-arch-sub">IR HAIER_AC176</div>
+              </div>
+            </div>
+
+            <div class="manual-callout manual-callout--info">
+              <div class="manual-callout__icon">🌐</div>
+              <div class="manual-callout__content">
+                <strong>ตาราง IP Address ของอุปกรณ์:</strong>
+                <ul>
+                  <li><strong>4G/5G SIM Router</strong> — 192.168.1.1 (ศูนย์กลางเครือข่าย)</li>
+                  <li><strong>PLC AMX FX3U</strong> — 192.168.1.10 (Modbus TCP Server Port 502)</li>
+                  <li><strong>HF2211 Gateway</strong> — 192.168.1.20 (สะพานเชื่อม Ethernet ↔ Wi-Fi)</li>
+                  <li><strong>ESP32-S3 IoT Gateway</strong> — 192.168.1.30 (MQTT Client + IR Controller)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: 16 Code Sections -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔑 16 เซ็กชันหลักของโปรแกรม (Key Code Sections)</h3>
+
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">เซ็กชัน</th>
+                    <th>ชื่อ</th>
+                    <th>หน้าที่หลัก</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">§1</span></td>
+                    <td>System Config</td>
+                    <td>ตั้งค่า WiFi (SSID/Password), MQTT (Host/Port/User), IR Pin (GPIO12), Repeat Count (10 ครั้ง)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">§2</span></td>
+                    <td>Modbus Map</td>
+                    <td>แผนที่ Address ทั้งหมดของ PLC: X0-X2, M5-M500, D0-D504</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">§3</span></td>
+                    <td>IR State Tables</td>
+                    <td>ตาราง Hex 22 Bytes ของ HAIER_AC176 สำหรับอุณหภูมิ OFF, 18°C–27°C</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">§4</span></td>
+                    <td>Data Models</td>
+                    <td>โครงสร้างข้อมูล AirconState (3 ตัว: desired/plc/lastIR), MachineData, PlcRtcTime, SystemStatus</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">§5</span></td>
+                    <td>Network & Timers</td>
+                    <td>WiFiClientSecure, PubSubClient, Modbus TCP Client — Timer Interval ต่างๆ</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">§6</span></td>
+                    <td>Setup</td>
+                    <td>เริ่มต้น Serial, WiFi STA (ปิด Modem Sleep), TLS (setInsecure), MQTT, IR (ac.begin)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">§7</span></td>
+                    <td>Main Loop</td>
+                    <td>Non-blocking loop: WiFi → MQTT → Modbus → PollPLC → ProcessCmd → CheckPhysical → Publish</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">§8</span></td>
+                    <td>WiFi & MQTT</td>
+                    <td>Reconnect WiFi ทุก 10s, MQTT ทุก 3s — LWT "offline" เมื่อหลุด — QoS 1</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">§9</span></td>
+                    <td>Modbus TCP Engine</td>
+                    <td>สร้าง MBAP Header 12 bytes, ส่ง TCP, ตรวจสอบ Exception, FC match, Timeout 1s</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">§10</span></td>
+                    <td>Modbus FC01-FC06</td>
+                    <td>FC01 Read Coils, FC02 Read Discrete, FC03 Read Registers, FC05 Write Coil, FC06 Write Reg — Retry 2x</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--red">§11</span></td>
+                    <td>PLC Polling (สำคัญที่สุด)</td>
+                    <td>อ่านค่าทุก 1 วินาที — 10 ขั้นตอน: X0-X2, Mode, Lamps, Temps, D11, RTC, Triggers, Stop Time, M47</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">§12</span></td>
+                    <td>Process Pending Cmd</td>
+                    <td>MQTT ไม่ยิง IR โดยตรง → ตั้ง commandPending → ประมวลผล: Mode/Save/Start/Stop/Reset</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">§13</span></td>
+                    <td>Physical Inputs</td>
+                    <td>ตรวจ Rising Edge ของ X0 (Start → IR ON) และ X2 (Reset → IR OFF)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">§14</span></td>
+                    <td>MQTT Callback</td>
+                    <td>รับ JSON จาก aircon/control — แปลง power/temp/mode/fan/buttons → desiredState + pending</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">§15</span></td>
+                    <td>IR Driver (RMT)</td>
+                    <td>ใช้ IRHaierAC176 Hardware RMT — ยิง IR ซ้ำ 10 ครั้ง (ไม่ถูก WiFi Interrupt รบกวน)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">§16</span></td>
+                    <td>Status Publish</td>
+                    <td>Publish JSON 30+ fields ไปยัง aircon/status (Retained) ทุก 5 วินาที</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: Architecture Keys -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">⚙️ สถาปัตยกรรมคีย์หลัก (Architecture Key Points)</h3>
+
+            <div class="manual-rules-grid">
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🔄</div>
+                <div class="manual-rule-content">
+                  <h4>Non-blocking Loop</h4>
+                  <p>ทุกฟังก์ชันใน loop() ใช้ <strong>millis()</strong> ไม่มี delay() ที่บล็อกระบบ — WiFi, MQTT, Modbus, IR ทำงานพร้อมกันอย่างราบรื่น</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🎯</div>
+                <div class="manual-rule-content">
+                  <h4>3 สถานะแอร์แยกกัน (Source of Truth)</h4>
+                  <p><strong>desiredState</strong> = ค่าที่ Web/HMI ต้องการ | <strong>plcState</strong> = ค่าจาก PLC (Source of Truth) | <strong>lastIRState</strong> = ค่าที่ยิง IR จริง</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">🛡️</div>
+                <div class="manual-rule-content">
+                  <h4>Command Pending Architecture</h4>
+                  <p>MQTT Callback <strong>ไม่ยิง IR โดยตรง</strong> — แค่ตั้ง commandPending=true → processPendingCommand() จัดการใน loop ถัดไป ป้องกัน ISR ค้าง</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">📡</div>
+                <div class="manual-rule-content">
+                  <h4>Hardware RMT IR (ไม่ใช่ Bit-Bang)</h4>
+                  <p>ใช้ <strong>IRHaierAC176 + RMT Peripheral</strong> ของ ESP32 สร้างพัลส์ 38kHz — ไม่ถูก WiFi Interrupt รบกวน ยิงซ้ำ 10 ครั้งเพื่อให้แน่ใจ</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: IR Trigger Logic -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">🔥 เงื่อนไขการทริกเกอร์ IR (IR Trigger Conditions)</h3>
+
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>โหมด</th>
+                    <th>เงื่อนไขยิง IR เปิดแอร์</th>
+                    <th>เงื่อนไขยิง IR ปิดแอร์</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">MANUAL</span></td>
+                    <td><strong>M5 + M60 + M61</strong> ต้อง ON พร้อมกันทั้ง 3 ตัว (Rising Edge)</td>
+                    <td>PLC RTC ≥ D500-D504 (Stop Time) หรือ M47 Rising Edge</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">AUTO</span></td>
+                    <td><strong>M70 + M71</strong> ต้อง ON พร้อมกันทั้ง 2 ตัว (Rising Edge)</td>
+                    <td>M47 Rising Edge จาก PLC (ครบ 17:00 น.)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">Web Start Btn</span></td>
+                    <td>MQTT → pendingStartBtn=1 → processPendingCommand() → ยิง IR ON</td>
+                    <td>MQTT → pendingStopBtn=1 → ยิง IR OFF + M5=OFF</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">Physical X0/X2</span></td>
+                    <td>X0 (Start) Rising Edge → ยิง IR ON 1 ครั้ง</td>
+                    <td>X2 (Reset) Rising Edge → ยิง IR OFF 1 ครั้ง</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="manual-callout manual-callout--warning">
+              <div class="manual-callout__icon">⚠️</div>
+              <div class="manual-callout__content">
+                <strong>สิ่งที่ไม่ยิง IR:</strong>
+                <ul>
+                  <li>การสลับโหมด NONE/AUTO/MANUAL — ไม่ทริกเกอร์ IR</li>
+                  <li>กด Save Schedule (M42) — ไม่ทริกเกอร์ IR</li>
+                  <li>กด MQTT Send (M8) ขณะเครื่องไม่ได้รัน — ไม่ยิง IR (ป้องกันเปิดก่อนเวลา)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: MQTT Topics -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">📨 MQTT Topics & JSON Payload</h3>
+
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>Topic</th>
+                    <th>ทิศทาง</th>
+                    <th>คำอธิบาย</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">aircon/control</span></td>
+                    <td>Web → ESP32</td>
+                    <td>สั่ง power, temperature, mode, fan, start_btn, stop_btn, reset, schedule_mode ฯลฯ</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">aircon/status</span></td>
+                    <td>ESP32 → Web</td>
+                    <td>JSON 30+ fields: สถานะแอร์, เซนเซอร์ 3 ตัว, ไฟสถานะ, โหมด, เวลา PLC, uptime (Retained)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">aircon/availability</span></td>
+                    <td>ESP32 LWT</td>
+                    <td>"online" / "offline" — LWT (Last Will Testament) ส่งอัตโนมัติเมื่อ ESP32 หลุด</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="manual-callout manual-callout--info">
+              <div class="manual-callout__icon">📝</div>
+              <div class="manual-callout__content">
+                <strong>ตัวอย่าง JSON (aircon/control):</strong>
+                <pre style="background: #f1f5f9; padding: 12px; border-radius: 8px; font-size: 0.85rem; margin-top: 8px; overflow-x: auto; white-space: pre-wrap; font-family: 'Courier New', monospace;">{
+  "power": 1,
+  "temperature": 25,
+  "mode": 0,
+  "fan": 0,
+  "start_btn": 1,
+  "schedule_mode": "manual",
+  "stop_year": 2026,
+  "stop_month": 9,
+  "stop_day": 14,
+  "stop_hour": 17,
+  "stop_minute": 0
+}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Timer Intervals -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">⏱️ ค่า Timer Interval สำคัญ</h3>
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>ตัวแปร</th>
+                    <th>ค่า</th>
+                    <th>หน้าที่</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">WIFI_RETRY</span></td>
+                    <td>10 วินาที</td>
+                    <td>ลอง WiFi Reconnect ใหม่ทุก 10 วินาทีถ้าหลุด</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">MQTT_RETRY</span></td>
+                    <td>3 วินาที</td>
+                    <td>ลอง MQTT Reconnect ใหม่ทุก 3 วินาทีถ้าหลุด</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">MODBUS_RETRY</span></td>
+                    <td>5 วินาที</td>
+                    <td>ลอง Modbus TCP Reconnect ใหม่ทุก 5 วินาที</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">MODBUS_POLL</span></td>
+                    <td>1 วินาที</td>
+                    <td>อ่านค่าจาก PLC ทุก 1 วินาที (Polling Interval)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">STATUS_INTERVAL</span></td>
+                    <td>5 วินาที</td>
+                    <td>Publish สถานะ JSON ไปยัง MQTT ทุก 5 วินาที</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">IR_REPEAT</span></td>
+                    <td>10 ครั้ง / 50ms</td>
+                    <td>ยิง IR ซ้ำ 10 ครั้ง หน่วง 50ms ระหว่างรอบ (~5.5 วินาที)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: Config Guide -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">🛠️ การปรับแต่งค่าที่ทำบ่อย (Configuration Guide)</h3>
+
+            <div class="manual-rules-grid">
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">📶</div>
+                <div class="manual-rule-content">
+                  <h4>เปลี่ยน WiFi</h4>
+                  <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">WIFI_SSID</code> = ชื่อ WiFi ใหม่<br>
+                  <code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">WIFI_PASSWORD</code> = รหัสผ่านใหม่</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">☁️</div>
+                <div class="manual-rule-content">
+                  <h4>เปลี่ยน MQTT Broker</h4>
+                  <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">MQTT_HOST</code>, <code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">MQTT_PORT</code> (8883),<br>
+                  <code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">MQTT_USERNAME</code>, <code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">MQTT_PASSWORD</code></p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🔌</div>
+                <div class="manual-rule-content">
+                  <h4>เปลี่ยน IP ของ PLC</h4>
+                  <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">PLC_IP(192, 168, 1, 10)</code> — เปลี่ยน Octet สุดท้ายตามต้องการ</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">🧪</div>
+                <div class="manual-rule-content">
+                  <h4>โหมดจำลอง (Simulation)</h4>
+                  <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">SIMULATION_MODE = true</code> — ทดสอบได้โดยไม่ต้องต่อ PLC จริง จำลอง Sensor ค่า 25/28/16°C</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Libraries -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">📚 Libraries ที่ใช้ในโปรแกรม</h3>
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>Library</th>
+                    <th>หน้าที่</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">ArduinoJson</span></td>
+                    <td>แปลง JSON สำหรับ MQTT payload (Serialize/Deserialize)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">IRremoteESP8266</span></td>
+                    <td>ส่งสัญญาณ IR ผ่าน Hardware RMT — รองรับหลายโปรโตคอล</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--green">ir_Haier.h</span></td>
+                    <td>โปรโตคอล HAIER_AC176 เฉพาะสำหรับ Candy/Haier (22 Bytes)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">PubSubClient</span></td>
+                    <td>MQTT Client Library สำหรับ ESP32</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">WiFiClientSecure</span></td>
+                    <td>TLS/SSL สำหรับเชื่อมต่อ MQTT Broker แบบ Secure (Port 8883)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: Important Notes -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">⚠️ จุดสำคัญที่ต้องระวังในโค้ด</h3>
+            <div class="manual-rules-grid">
+              <div class="manual-rule-card manual-rule-card--danger">
+                <div class="manual-rule-icon">🔒</div>
+                <div class="manual-rule-content">
+                  <h4>M8 ค้างไว้จนกว่าจะกดรีเซท</h4>
+                  <p>คอยล์ M8 (MQTT Send) จะ <strong>ไม่ auto-clear</strong> เหมือนคอยล์อื่น ต้องกดรีเซท (M7) จึงจะ clear M8=0</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--danger">
+                <div class="manual-rule-icon">⏳</div>
+                <div class="manual-rule-content">
+                  <h4>M8 ยิง IR เฉพาะตอนเครื่องรัน</h4>
+                  <p>กด MQTT Send (M8) ขณะเครื่องไม่ได้รัน → <strong>บันทึกค่า D11 แต่ไม่ยิง IR</strong> ป้องกันเปิดแอร์ก่อนเวลาเริ่ม</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">🌡️</div>
+                <div class="manual-rule-content">
+                  <h4>อุณหภูมิต้อง 18–27°C</h4>
+                  <p>ค่านอกช่วง 18–27°C จะถูก <strong>Reject</strong> ทันที — ตรงทั้ง MQTT Callback และ PLC D11</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">📶</div>
+                <div class="manual-rule-content">
+                  <h4>WiFi Modem Sleep ถูกปิด</h4>
+                  <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">WiFi.setSleep(false)</code> — ป้องกันแพ็กเก็ตตกหล่น แต่ใช้พลังงานมากขึ้น</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>

@@ -529,6 +529,10 @@
           <span class="manual-nav-btn__icon">📖</span>
           <span>7. คู่มือโปรแกรม ESP32</span>
         </button>
+        <button type="button" class="manual-nav-btn" data-tab="tabWeb">
+          <span class="manual-nav-btn__icon">💻</span>
+          <span>8. การทำงาน & โครงสร้างเว็บ</span>
+        </button>
       </nav>
 
       <!-- Modal Body Tab Contents -->
@@ -1345,6 +1349,365 @@
                   <h4>WiFi Modem Sleep ถูกปิด</h4>
                   <p><code style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">WiFi.setSleep(false)</code> — ป้องกันแพ็กเก็ตตกหล่น แต่ใช้พลังงานมากขึ้น</p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- TAB 8: WEB DASHBOARD ARCHITECTURE & DEVELOPMENT MANUAL -->
+        <div class="manual-tab-pane" id="tabWeb">
+
+          <!-- Section: Web Architecture & Overview -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">🌐 สถาปัตยกรรม & การเชื่อมต่อของ Web Dashboard</h3>
+            <p class="manual-desc">
+              หน้าเว็บแดชบอร์ด (Web Dashboard) ถูกออกแบบด้วยเทคโนโลยี <strong>HTML5, Vanilla CSS, และ Modern JavaScript (ES6+)</strong> โดยเชื่อมต่อสื่อสารกับระบบภายนอกผ่าน <strong>WebSocket Secure (WSS) บนพอร์ต 8884</strong> ไปยัง HiveMQ Cloud MQTT Broker โดยตรง ทำให้สามารถส่งคำสั่งควบคุมและรับข้อมูลสถานะแบบ Real-time ได้จากทุกหนทุกแห่ง
+            </p>
+
+            <div class="manual-callout manual-callout--info">
+              <span class="manual-callout__icon">💡</span>
+              <div class="manual-callout__content">
+                <strong>ทำไมเว็บเบราว์เซอร์จึงใช้ MQTT over WebSocket (WSS Port 8884)?</strong><br>
+                เนื่องจากเว็บเบราว์เซอร์ (Chrome, Edge, Safari, Firefox) มีข้อจำกัดด้านความปลอดภัยที่ไม่สามารถเปิด Raw TCP Socket (พอร์ต 1883/8883) ได้โดยตรง ไลบรารี <code>MQTT.js</code> จึงทำการห่อหุ้มโปรโตคอล MQTT ไว้บน <strong>WebSocket Secure (WSS) พอร์ต 8884</strong> ซึ่งทำงานผ่าน HTTPS/TLS ได้อย่างปลอดภัยและรวดเร็ว
+              </div>
+            </div>
+
+            <!-- End-to-End Data Pipeline Architecture Diagram -->
+            <div class="manual-arch-card" style="margin-top: 16px;">
+              <h4 style="font-size:0.95rem; font-weight:700; margin-bottom:12px; color:var(--text-bright, #fff);">
+                🔄 ผังเส้นทางการไหลของข้อมูลแบบครบวงจร (End-to-End Data Flow)
+              </h4>
+              <div class="manual-arch-diagram" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center;">
+                <div class="manual-arch-item manual-arch-item--active" style="min-width:130px; text-align:center;">
+                  <div class="manual-arch-item__icon">💻</div>
+                  <div class="manual-arch-item__name">Web Dashboard</div>
+                  <div class="manual-arch-item__desc">HTML / JS / CSS</div>
+                </div>
+                <div style="font-size:1.2rem; color:#00f5d4; font-weight:bold;">⟷</div>
+                <div class="manual-arch-item" style="min-width:140px; text-align:center;">
+                  <div class="manual-arch-item__icon">☁️</div>
+                  <div class="manual-arch-item__name">HiveMQ Cloud</div>
+                  <div class="manual-arch-item__desc">WSS:8884 / TLS:8883</div>
+                </div>
+                <div style="font-size:1.2rem; color:#00f5d4; font-weight:bold;">⟷</div>
+                <div class="manual-arch-item" style="min-width:130px; text-align:center;">
+                  <div class="manual-arch-item__icon">📟</div>
+                  <div class="manual-arch-item__name">ESP32-S3</div>
+                  <div class="manual-arch-item__desc">PubSubClient / IR</div>
+                </div>
+                <div style="font-size:1.2rem; color:#00f5d4; font-weight:bold;">⟷</div>
+                <div class="manual-arch-item" style="min-width:130px; text-align:center;">
+                  <div class="manual-arch-item__icon">🏭</div>
+                  <div class="manual-arch-item__name">PLC FX3U</div>
+                  <div class="manual-arch-item__desc">Modbus TCP : 502</div>
+                </div>
+                <div style="font-size:1.2rem; color:#ff007f; font-weight:bold;">⟶</div>
+                <div class="manual-arch-item" style="min-width:120px; text-align:center;">
+                  <div class="manual-arch-item__icon">❄️</div>
+                  <div class="manual-arch-item__name">Candy AC</div>
+                  <div class="manual-arch-item__desc">IR 38kHz (10x)</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Network Protocols Table -->
+            <div class="manual-table-responsive" style="margin-top:16px;">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>เส้นทางการเชื่อมต่อ (Link)</th>
+                    <th>โปรโตคอล (Protocol)</th>
+                    <th>พอร์ต (Port)</th>
+                    <th>การเข้ารหัส (Security)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Web Dashboard ⟷ HiveMQ Cloud</strong></td>
+                    <td><span class="manual-tag manual-tag--cyan">MQTT over WebSockets</span></td>
+                    <td><code>8884</code></td>
+                    <td>TLS / SSL (WSS) + User/Password</td>
+                  </tr>
+                  <tr>
+                    <td><strong>ESP32-S3 ⟷ HiveMQ Cloud</strong></td>
+                    <td><span class="manual-tag manual-tag--blue">MQTT Secure (MQTTS)</span></td>
+                    <td><code>8883</code></td>
+                    <td>TLS 1.2 / CA Insecure Mode</td>
+                  </tr>
+                  <tr>
+                    <td><strong>ESP32-S3 ⟷ Mitsubishi PLC FX3U</strong></td>
+                    <td><span class="manual-tag manual-tag--purple">Modbus TCP / IP</span></td>
+                    <td><code>502</code></td>
+                    <td>Local Ethernet LAN</td>
+                  </tr>
+                  <tr>
+                    <td><strong>ESP32-S3 ⟶ Candy Air Conditioner</strong></td>
+                    <td><span class="manual-tag manual-tag--red">Infrared (HAIER_AC176)</span></td>
+                    <td>GPIO 12</td>
+                    <td>Hardware RMT Carrier 38 kHz (ยิง 10 ครั้ง)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: MQTT Topics & JSON Payloads -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">📡 ช่องทาง MQTT Topics & โครงสร้างข้อมูล JSON</h3>
+            <p class="manual-desc">
+              Web Dashboard ใช้ 4 หัวข้อ (MQTT Topics) หลักในการประสานงานกับอุปกรณ์และผู้ใช้คนอื่นๆ ในระบบ:
+            </p>
+
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>MQTT Topic</th>
+                    <th>ทิศทาง (Direction)</th>
+                    <th>QoS</th>
+                    <th>หน้าที่และคำอธิบาย</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px;">aircon/status</code></td>
+                    <td><span class="manual-tag manual-tag--green">ESP32 ⟶ Web</span> (Sub)</td>
+                    <td><code>QoS 1</code></td>
+                    <td>รับสถานะเซนเซอร์ 3 จุด (D0-D2), หลอดไฟ (M1-M3), สถานะเครื่อง (D10, D11), และเวลาจริง PLC RTC (D400-D406)</td>
+                  </tr>
+                  <tr>
+                    <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px;">aircon/control</code></td>
+                    <td><span class="manual-tag manual-tag--cyan">Web ⟶ ESP32</span> (Pub)</td>
+                    <td><code>QoS 1</code></td>
+                    <td>ส่งคำสั่งควบคุม เช่น สั่งเปิด/ปิด (Power), อุณหภูมิ (Temp), พัดลม (Fan), ปุ่มเริ่ม (start_btn), ปุ่มหยุด (stop_btn), รีเซท (reset), และเวลาหยุดทำงาน</td>
+                  </tr>
+                  <tr>
+                    <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px;">aircon/availability</code></td>
+                    <td><span class="manual-tag manual-tag--yellow">ESP32 ⟶ Web</span> (Sub)</td>
+                    <td><code>QoS 1</code></td>
+                    <td>รับสัญญาณสถานะออนไลน์ของฮาร์ดแวร์ ESP32 (ข้อความ <code>online</code> หรือ <code>offline</code> ผ่าน LWT)</td>
+                  </tr>
+                  <tr>
+                    <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px;">aircon/sync</code></td>
+                    <td><span class="manual-tag manual-tag--purple">Web ⟷ Web</span> (Pub/Sub)</td>
+                    <td><code>QoS 0</code></td>
+                    <td>ซิงค์หน้าจอแบบ Real-time ข้ามอุปกรณ์เมื่อมีผู้ใช้หลายคนเปิดเว็บพร้อมกัน และติดตามจำนวนผู้ใช้ออนไลน์ (Presence Tracker)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- JSON Payload Examples Grid -->
+            <div class="manual-rules-grid" style="margin-top:16px;">
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">📤</div>
+                <div class="manual-rule-content">
+                  <h4>ตัวอย่าง JSON คำสั่งจากเว็บ (Web ⟶ ESP32: aircon/control)</h4>
+                  <pre style="background:#0f172a; color:#38bdf8; padding:10px; border-radius:6px; font-size:0.8rem; overflow-x:auto; margin-top:6px;">
+{
+  "power": 1,
+  "temperature": 25,
+  "mode": 0,
+  "fan": 0,
+  "start_btn": 1,
+  "stop_btn": 0,
+  "reset": 0,
+  "mqtt_send": 0,
+  "schedule_mode": "auto",
+  "stop_year": 2026,
+  "stop_month": 9,
+  "stop_day": 14,
+  "stop_hour": 17,
+  "stop_minute": 0
+}</pre>
+                  <p style="font-size:0.82rem; margin-top:6px; color:var(--text-muted, #94a3b8);">
+                    <code>start_btn: 1</code> สั่งกระตุ้น M5 บน PLC และสั่ง ESP32 ยิง IR 10 ครั้งทันที
+                  </p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">📥</div>
+                <div class="manual-rule-content">
+                  <h4>ตัวอย่าง JSON สถานะที่ส่งกลับมา (ESP32 ⟶ Web: aircon/status)</h4>
+                  <pre style="background:#0f172a; color:#4ade80; padding:10px; border-radius:6px; font-size:0.8rem; overflow-x:auto; margin-top:6px;">
+{
+  "power": 1,
+  "temperature": 25,
+  "fan": 0,
+  "temp1": 25.0,
+  "temp2": 28.5,
+  "temp3": 16.0,
+  "esp32_online": 1,
+  "plc_online": 1,
+  "m1_green": 1,
+  "m2_red": 0,
+  "m3_yellow": 0,
+  "plc_rtc_hour": 14,
+  "plc_rtc_min": 30
+}</pre>
+                  <p style="font-size:0.82rem; margin-top:6px; color:var(--text-muted, #94a3b8);">
+                    เว็บจะนำค่าอุณหภูมิและหลอดไฟไปอัปเดต Gauge และ State Badge แบบทันที
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Code Files & Architecture -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">📁 โครงสร้างไฟล์และการพัฒนาเว็บ (Project File Structure)</h3>
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>ไฟล์ / ทรัพยากร</th>
+                    <th>ประเภท</th>
+                    <th>หน้าที่และความสำคัญ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--cyan">index.html</span></td>
+                    <td>HTML5 SPA</td>
+                    <td>โครงสร้างส่วนแสดงผลทั้งหมด (Header, Gauge เซนเซอร์ 3 ตัว, ไฟสถานะ 3 ดวง, เมนูสลับโหมด, ส่วนควบคุมคำสั่ง และ Modal คู่มือการใช้งาน)</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--purple">style.css</span></td>
+                    <td>Vanilla CSS</td>
+                    <td>ระบบสไตล์ Glassmorphism, CSS Custom Properties (Variables), Responsive Design, แอนิเมชันวงแหวนเซนเซอร์ (SVG Gauge) และ Particle Effect</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--yellow">app.js</span></td>
+                    <td>Vanilla JS (ES6+)</td>
+                    <td>สมองกลศูนย์กลาง Logic: State Management, การเชื่อมต่อ MQTT over WebSocket, การแปลงเวลา PLC RTC, Scheduler, และ Cross-device Sync</td>
+                  </tr>
+                  <tr>
+                    <td><span class="manual-tag manual-tag--blue">mqtt.min.js</span></td>
+                    <td>JavaScript Library</td>
+                    <td>ไลบรารี MQTT.js (v5.10.2) สำหรับเปิดการเชื่อมต่อ WebSocket ไปยัง Broker พร้อม CDN Fallback ในตัว</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: Key Functions in JavaScript -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">⚙️ โมดูลและฟังก์ชันแกนหลักใน JavaScript (<code style="background:#e2e8f0; padding:2px 6px; border-radius:4px;">app.js</code>)</h3>
+            <div class="manual-table-responsive">
+              <table class="manual-table">
+                <thead>
+                  <tr>
+                    <th>ชื่อฟังก์ชัน (Function)</th>
+                    <th>หมวดหมู่</th>
+                    <th>การทำงานและกลไกภายใน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>connectMqttBroker()</code></td>
+                    <td>Network / MQTT</td>
+                    <td>ดึงคอนฟิก Broker/User/Pass สร้าง WebSocket ไปยัง <code>wss://...:8884/mqtt</code> พร้อมตั้ง Event Listeners (<code>connect</code>, <code>message</code>, <code>close</code>, <code>error</code>) และ Subscribe 4 Topics</td>
+                  </tr>
+                  <tr>
+                    <td><code>sendMqttPayload(...)</code></td>
+                    <td>Command / MQTT</td>
+                    <td>ตรวจสอบความถูกต้อง (Validation) เช่น อุณหภูมิ 18-27°C แปลงค่าวันที่/เวลาเป็นตัวเลข แล้วส่ง JSON Payload ผ่าน Topic <code>aircon/control</code> (QoS 1)</td>
+                  </tr>
+                  <tr>
+                    <td><code>handleMqttStatus(data)</code></td>
+                    <td>State & UI Sync</td>
+                    <td>ประมวลผล JSON ที่ ESP32 ส่งกลับมา อัปเดตค่าเซนเซอร์ 3 จุด, หลอดไฟแสดงผล, สถานะเครื่อง และเวลาจริงจาก PLC RTC (D400-D406)</td>
+                  </tr>
+                  <tr>
+                    <td><code>setupClock()</code> &amp; <code>checkScheduleState()</code></td>
+                    <td>Clock &amp; Scheduler</td>
+                    <td>ลูปตรวจจับเวลาทุก 1 วินาที เทียบเวลาปัจจุบันกับเวลาเริ่ม-หยุด (ในโหมด Auto เทียบ 08:00–17:00) และสั่ง Start/Stop อัตโนมัติเมื่อถึงเวลา</td>
+                  </tr>
+                  <tr>
+                    <td><code>startIrTransmissionLock(5500)</code></td>
+                    <td>Safety / Lock</td>
+                    <td>ล็อกปุ่มกดปรับอุณหภูมิบนหน้าเว็บเป็นเวลา 5.5 วินาที ขณะที่ ESP32 กำลังยิงสัญญาณ IR 10 ครั้ง เพื่อป้องกันการส่งคำสั่งชนกัน</td>
+                  </tr>
+                  <tr>
+                    <td><code>checkEsp32Watchdog()</code></td>
+                    <td>Watchdog / Monitor</td>
+                    <td>ตรวจสอบ Heartbeat จาก ESP32 หากไม่ได้รับข้อมูลอัปเดตเกิน 15 วินาที ระบบจะปรับ Badge สถานะ ESP32 เป็น <strong>OFFLINE</strong> ทันที</td>
+                  </tr>
+                  <tr>
+                    <td><code>broadcastUiSync()</code> &amp; <code>handleUiSyncMessage()</code></td>
+                    <td>Cross-Device Sync</td>
+                    <td>ส่งและรับข้อมูลความเปลี่ยนแปลงของ UI ระหว่างหน้าจออุปกรณ์ต่างๆ ผ่าน Topic <code>aircon/sync</code> เพื่อให้ผู้ใช้ทุกคนเห็นข้อมูลตรงกันทันที</td>
+                  </tr>
+                  <tr>
+                    <td><code>switchManualTab(tabId)</code></td>
+                    <td>UI Navigation</td>
+                    <td>สลับแท็บคู่มือการใช้งานใน Modal แบบ Dynamic และเลื่อนหน้าต่างกลับสู่ด้านบนสุดอย่างนุ่มนวล (Smooth Scroll)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section: Reliability & Security Mechanisms -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">🛡️ กลไกความปลอดภัย &amp; การป้องกันความผิดพลาดบนเว็บ</h3>
+            <div class="manual-rules-grid">
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🛡️</div>
+                <div class="manual-rule-content">
+                  <h4>การตรวจสอบข้อมูลเข้มงวด (Client-Side Validation)</h4>
+                  <p>จำกัดอุณหภูมิไว้ที่ 18–27°C เท่านั้น ห้ามเลือกวันที่ย้อนหลัง และตรวจสอบว่าเวลาหยุดต้องห่างจากเวลาเริ่มอย่างน้อย 5 นาที</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--info">
+                <div class="manual-rule-icon">🔒</div>
+                <div class="manual-rule-content">
+                  <h4>Optimistic Locking (ป้องกัน Background Overwrite)</h4>
+                  <p>เมื่อผู้ใช้กำลังคลิกหรือพิมพ์ค่าใหม่ ระบบจะระงับการเขียนทับค่าจาก Background MQTT Status ชั่วคราว 5 วินาที เพื่อให้ผู้ใช้ปรับแต่งค่าได้อย่างราบรื่น</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">📡</div>
+                <div class="manual-rule-content">
+                  <h4>ระบบ Watchdog แจ้งเตือนหลุดการเชื่อมต่อ (15s Timeout)</h4>
+                  <p>หากบอร์ด ESP32 ดับ ไฟดับ หรือสัญญาณอินเทอร์เน็ตขาดหายเกิน 15 วินาที แดชบอร์ดจะปรับสถานะเป็น OFFLINE และแจ้งเตือนใน Log</p>
+                </div>
+              </div>
+
+              <div class="manual-rule-card manual-rule-card--warning">
+                <div class="manual-rule-icon">🔄</div>
+                <div class="manual-rule-content">
+                  <h4>CDN Auto-Fallback สำหรับ MQTT.js</h4>
+                  <p>หากเบราว์เซอร์ไม่สามารถโหลดไฟล์ <code>mqtt.min.js</code> ภายในเครื่องได้ สคริปต์จะดึงไลบรารีสำรองจาก Cloudflare CDN ให้โดยอัตโนมัติ</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Web FAQ -->
+          <div class="manual-section">
+            <h3 class="manual-section__title">❓ คำถามที่พบบ่อยเกี่ยวกับการทำงานของเว็บ (Web FAQ)</h3>
+            <div class="manual-faq-item">
+              <div class="manual-faq-question">Q: สามารถเปลี่ยน Broker หรือรหัสผ่าน MQTT โดยไม่ต้องแก้โค้ดได้หรือไม่?</div>
+              <div class="manual-faq-answer">
+                <strong>ได้:</strong> สามารถเปิดเมนู "การตั้งค่าการเชื่อมต่อ (Settings Panel)" บนหน้าเว็บ แล้วกรอก Host, Username, Password ใหม่ แล้วกดปุ่ม "เชื่อมต่อ (Connect)" ข้อมูลจะถูกบันทึกไว้ใน <code>localStorage</code> ของเบราว์เซอร์อัตโนมัติ
+              </div>
+            </div>
+            <div class="manual-faq-item">
+              <div class="manual-faq-question">Q: ทำไมเมื่อกดปรับอุณหภูมิแล้ว ปุ่มปรับจะถูกล็อกชั่วขณะ (ประมาณ 5 วินาที)?</div>
+              <div class="manual-faq-answer">
+                <strong>เพื่อความแม่นยำของฮาร์ดแวร์:</strong> บอร์ด ESP32-S3 ถูกตั้งค่าให้ยิงสัญญาณ Infrared (IR) ซ้ำ 10 ครั้งติดต่อกัน (ใช้เวลาประมาณ 5.5 วินาที) เพื่อรับประกันว่าเครื่องปรับอากาศจะได้รับคำสั่ง 100% หน้าเว็บจึงล็อกปุ่มไว้ชั่วคราวเพื่อป้องกันไม่ให้ผู้ใช้ส่งคำสั่งใหม่ไปขัดจังหวะการยิงสัญญาณเดิม
+              </div>
+            </div>
+            <div class="manual-faq-item">
+              <div class="manual-faq-question">Q: หากเปิดเว็บจากหลายอุปกรณ์พร้อมกัน (คอมพิวเตอร์และมือถือ) หน้าจอจะซิงค์กันหรือไม่?</div>
+              <div class="manual-faq-answer">
+                <strong>ซิงค์กันแบบ Real-time:</strong> ระบบมีช่องสัญญาณ <code>aircon/sync</code> เมื่ออุปกรณ์หนึ่งกดเปลี่ยนโหมด ตั้งเวลา หรือสั่งเริ่มทำงาน จะกระจายข้อมูลไปอัปเดตหน้าจอของทุกอุปกรณ์ที่เปิดอยู่พร้อมกันทันที
               </div>
             </div>
           </div>

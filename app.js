@@ -51,7 +51,7 @@
       offDate: '',
       offTime: '',
     },
-    sensors: { temp1: null, temp2: null, temp3: null },
+    sensors: { temp1: null, temp2: null, temp3: null, lux: null, d10: null },
     sensorsUpdatedAt: null,
     indicators: { power: false, running: false, fault: false },
     // MQTT Remote Control (Desired & Actual State)
@@ -195,6 +195,9 @@
     sensorCard1: document.getElementById('sensorCard1'),
     sensorCard2: document.getElementById('sensorCard2'),
     sensorCard3: document.getElementById('sensorCard3'),
+    sensorCardLux: document.getElementById('sensorCardLux'),
+    sensorLuxVal: document.getElementById('sensorLuxVal'),
+    sensorProgressLux: document.getElementById('sensorProgressLux'),
     tempUpdateBadge: document.getElementById('tempUpdateBadge'),
 
     // Indicators
@@ -357,6 +360,10 @@
       }
       updateSensor(i, defaultTemps[i - 1]);
     }
+    if (DOM.sensorProgressLux) {
+      DOM.sensorProgressLux.style.strokeDasharray = String(SENSOR_RING_CIRCUMFERENCE);
+    }
+    updateLuxSensor(null);
     updateTempBadge();
   }
 
@@ -1980,7 +1987,17 @@
     if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
     if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
     if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
-    if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined) {
+
+    // Light Sensor Readback from PLC Register D10 (TSL2591)
+    const d10Val = (mqttData.d10 !== undefined) ? mqttData.d10 :
+                   (mqttData.d10_lux !== undefined) ? mqttData.d10_lux :
+                   (mqttData.lux !== undefined) ? mqttData.lux :
+                   (mqttData.d10_rs485 !== undefined) ? mqttData.d10_rs485 : undefined;
+    if (d10Val !== undefined) {
+      updateLuxSensor(parseFloat(d10Val));
+    }
+
+    if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined || d10Val !== undefined) {
       updateTempBadge();
     }
 
@@ -2167,6 +2184,45 @@
       cardEl.classList.add('sensor-card--warm');
     } else {
       cardEl.classList.add('sensor-card--hot');
+    }
+  }
+
+  // ── Light Intensity Sensor (TSL2591 / PLC Register D10) ──
+  function updateLuxSensor(value) {
+    const luxEl = DOM.sensorLuxVal;
+    const progressEl = DOM.sensorProgressLux;
+    const cardEl = DOM.sensorCardLux;
+    if (!luxEl || !cardEl) return;
+
+    if (value == null || isNaN(value)) {
+      if (state.sensors.lux != null) return;
+      luxEl.textContent = '--';
+      if (progressEl) {
+        progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE);
+      }
+      return;
+    }
+
+    const lux = Math.max(0, Math.round(Number(value)));
+    state.sensors.lux = lux;
+    state.sensors.d10 = lux;
+
+    luxEl.textContent = lux.toLocaleString();
+
+    if (progressEl) {
+      // Progress ring scale: 0 - 2000 Lux (มาตรฐานแสงสว่างในอาคาร)
+      const maxScale = 2000;
+      const pct = Math.min(Math.max(lux / maxScale, 0), 1);
+      progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
+    }
+
+    cardEl.classList.remove('sensor-card--lux-dim', 'sensor-card--lux-normal', 'sensor-card--lux-bright', 'sensor-card--offline');
+    if (lux < 50) {
+      cardEl.classList.add('sensor-card--lux-dim');
+    } else if (lux < 500) {
+      cardEl.classList.add('sensor-card--lux-normal');
+    } else {
+      cardEl.classList.add('sensor-card--lux-bright');
     }
   }
 
@@ -2910,6 +2966,7 @@
     updateSensor(1, parseFloat((base1 + (Math.random() - 0.5) * 0.4).toFixed(1)));
     updateSensor(2, parseFloat((base2 + (Math.random() - 0.5) * 0.6).toFixed(1)));
     updateSensor(3, parseFloat((base3 + (Math.random() - 0.5) * 0.3).toFixed(1)));
+    updateLuxSensor(Math.round(250 + (Math.random() - 0.5) * 30));
     updateTempBadge();
 
     handleMqttStatus(data);

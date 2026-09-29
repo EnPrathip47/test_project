@@ -224,8 +224,13 @@ body {
 .state-badge--running { background: var(--green-dim); color: var(--green); border-color: rgba(0,255,136,0.4); box-shadow: 0 0 12px var(--green-dim); }
 .state-badge--stopped { background: var(--red-dim); color: var(--red); border-color: rgba(255,68,102,0.3); }
 
-/* ── Sensor Cards ── */
-.sensor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.sensor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+@media (max-width: 1100px) {
+  .sensor-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .sensor-grid { grid-template-columns: 1fr; }
+}
 .sensor-card {
   background: var(--bg-glass);
   border: 1px solid var(--border);
@@ -283,6 +288,48 @@ body {
 .sensor-card--offline .sensor-card__temp { color: var(--text-muted); font-weight: 800; }
 .sensor-card--offline .sensor-card__progress { stroke: rgba(255,255,255,0.08); filter: none; }
 .sensor-card--offline { opacity: 0.75; }
+
+/* Light Intensity Sensor (TSL2591 / PLC D10) */
+.sensor-card--lux::before {
+  background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+}
+.sensor-card--lux:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+}
+.sensor-card__progress--lux {
+  stroke: #f59e0b;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.4));
+}
+.sensor-card--lux .sensor-card__temp {
+  color: #d97706;
+  font-weight: 800;
+}
+.sensor-card--lux .sensor-card__unit {
+  color: #d97706;
+  font-weight: 700;
+}
+.sensor-card--lux-dim .sensor-card__progress {
+  stroke: #94a3b8;
+  filter: drop-shadow(0 0 4px rgba(148, 163, 184, 0.3));
+}
+.sensor-card--lux-dim .sensor-card__temp {
+  color: #64748b;
+}
+.sensor-card--lux-normal .sensor-card__progress {
+  stroke: #f59e0b;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.4));
+}
+.sensor-card--lux-normal .sensor-card__temp {
+  color: #d97706;
+}
+.sensor-card--lux-bright .sensor-card__progress {
+  stroke: #eab308;
+  filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.6));
+}
+.sensor-card--lux-bright .sensor-card__temp {
+  color: #b45309;
+}
 
 /* ══════════════════════════════════════════
    STATUS INDICATORS — 3 lights

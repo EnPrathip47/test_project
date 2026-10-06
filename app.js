@@ -318,8 +318,8 @@
     // Evaluate Real-time State on startup / refresh:
     if (state.scheduleMode === 'auto') {
       const now = new Date();
-      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
-      if (start && stop && now >= start && now < stop) {
+      const curMins = now.getHours() * 60 + now.getMinutes();
+      if (curMins >= 8 * 60 && curMins < 17 * 60) {
         updateSystemState('running');
       } else {
         updateSystemState('ready');
@@ -340,7 +340,7 @@
         updateSystemState('ready');
       }
     } else {
-      updateSystemState(state.systemState || 'idle');
+      updateSystemState('idle');
     }
 
     updateMqttStatusUI();
@@ -476,40 +476,53 @@
 
     if (!onTimeVal || !offTimeVal) return;
 
-    // โหมด AUTO: วนลูปอัตโนมัติทุกวัน 08:00 - 17:00
+    // โหมด AUTO: วนลูปอัตโนมัติทุกวัน 08:00 - 17:00 (เมื่อถึงเวลา = เขียวค้าง, นอกเวลา = เขียวกระพริบ)
     if (state.scheduleMode === 'auto') {
-      const todayIso = getTodayIso();
-      const { start, stop: autoStop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
+      const currentHour = now.getHours();
+      const currentMin = now.getMinutes();
+      const currentMinutes = currentHour * 60 + currentMin;
+      const autoStartMinutes = 8 * 60;   // 08:00
+      const autoStopMinutes = 17 * 60;   // 17:00
 
-      // หากอยู่ในสถานะ STOPPED (กดหยุด) หรือ TIMEOUT (ครบเวลา) -> ล็อกระบบไว้ ต้องกดปุ่ม "รีเซท" เท่านั้น!
-      if (state.systemState === 'stopped' || state.systemState === 'timeout') {
+      // หากผู้ใช้กดปุ่มหยุด (STOPPED) -> ล็อกระบบไว้ ต้องกดปุ่ม "รีเซท" เท่านั้น
+      if (state.systemState === 'stopped') {
         return;
       }
 
-      if (state.systemState === 'ready' || state.systemState === 'idle') {
-        if (now >= start && now < autoStop) {
+      const isInAutoTime = (currentMinutes >= autoStartMinutes && currentMinutes < autoStopMinutes);
+
+      if (isInAutoTime) {
+        // เมื่อถึงเวลา (08:00 - 17:00) -> เขียวค้าง (RUNNING)
+        if (state.systemState !== 'running') {
           state.acOn = true;
           updateSystemState('running');
-          sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
+          sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1
           startIrTransmissionLock(5500);
-          addLog('success', `[Auto-Start] ถึงเวลาเริ่มทำงาน (08:00) -> สั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR อัตโนมัติ`);
+          addLog('success', `[AUTO] ถึงเวลาเริ่มทำงาน (08:00) -> สั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR อัตโนมัติ`);
           showToast('success', `⏰ ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (08:00) — เริ่มทำงานอัตโนมัติ`);
           broadcastUiSync('start_ac');
+        } else {
+          // แจ้งเตือนล่วงหน้า 5 นาที (16:55)
+          const autoRemainMin = autoStopMinutes - currentMinutes;
+          if (autoRemainMin <= 5 && autoRemainMin > 0 && !state.preStopWarned) {
+            state.preStopWarned = true;
+            showToast('warning', '⏳ แจ้งเตือน: เหลือเวลาทำงานอีก 5 นาที เครื่องปรับอากาศจะหยุดทำงานอัตโนมัติ (17:00)');
+            addLog('warning', '[แจ้งเตือน] เหลือเวลาทำงานอีก 5 นาที — จะหยุดทำงานเวลา 17:00');
+          }
         }
-      } else if (state.systemState === 'running') {
-        const autoRemainMs = autoStop.getTime() - now.getTime();
-        if (autoRemainMs > 0 && autoRemainMs <= 5 * 60 * 1000 && !state.preStopWarned) {
-          state.preStopWarned = true;
-          showToast('warning', '⏳ แจ้งเตือน: เหลือเวลาทำงานอีก 5 นาที เครื่องปรับอากาศจะหยุดทำงานอัตโนมัติ (17:00)');
-          addLog('warning', '[แจ้งเตือน] เหลือเวลาทำงานอีก 5 นาที — จะหยุดทำงานเวลา 17:00');
-        }
-        if (now >= autoStop) {
+      } else {
+        // นอกเวลา (ก่อน 08:00 หรือ หลัง 17:00) -> นอกเวลาเขียวจะกระพริบ (READY)
+        state.preStopWarned = false;
+        if (state.systemState === 'running') {
           state.acOn = false;
-          updateSystemState('timeout');
-          sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
+          sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1);
           startIrTransmissionLock(5500);
-          addLog('warning', `[Schedule] ครบเวลาเปิดเครื่องปรับอากาศ (17:00) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
-          showToast('warning', `🛑 ทำงานครบเวลาแล้ว (17:00) — ปิดเครื่องปรับอากาศเรียบร้อย (กรุณากดรีเซทเพื่อเริ่มรอบใหม่)`);
+          addLog('info', `[AUTO] ครบเวลาทำงาน (17:00) -> ปิดเครื่องปรับอากาศ และเข้าสู่สถานะรอนอกเวลา (เขียวกระพริบ)`);
+          showToast('info', `⏰ ครบเวลาทำงานแล้ว (17:00) — ปิดเครื่องปรับอากาศ และเข้าสู่สถานะรอนอกเวลา (เขียวกระพริบ)`);
+        }
+        if (state.systemState !== 'ready') {
+          state.acOn = false;
+          updateSystemState('ready');
         }
       }
       return;
@@ -949,8 +962,10 @@
           state.schedule.offDate = settings.offDate || '';
           state.schedule.offTime = settings.offTime || '';
           state.schedule.enabled = Boolean(settings.scheduleEnabled);
-          if (settings.systemState) {
+          if (state.schedule.enabled && settings.systemState) {
             state.systemState = settings.systemState;
+          } else {
+            state.systemState = 'idle';
           }
         } else if (state.scheduleMode === 'auto') {
           const todayIso = getTodayIso();
@@ -1154,8 +1169,13 @@
       state.schedule.enabled = true;
 
       const now = new Date();
-      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
-      if (start && stop && now >= start && now < stop) {
+      const currentHour = now.getHours();
+      const currentMin = now.getMinutes();
+      const currentMinutes = currentHour * 60 + currentMin;
+      const autoStartMinutes = 8 * 60;   // 08:00
+      const autoStopMinutes = 17 * 60;   // 17:00
+
+      if (currentMinutes >= autoStartMinutes && currentMinutes < autoStopMinutes) {
         state.acOn = true;
         updateSystemState('running');
       } else {
@@ -1751,9 +1771,8 @@
     const todayIso = getTodayIso();
 
     if (state.scheduleMode === 'auto') {
-      const { start, stop } = getScheduleRange(todayIso, '08:00', todayIso, '17:00');
-      if (!start || !stop) return false;
-      return (now >= start && now < stop);
+      const curMins = now.getHours() * 60 + now.getMinutes();
+      return (curMins >= 8 * 60 && curMins < 17 * 60);
     }
 
     const onTimeVal = state.schedule.onTime || DOM.onTime?.value;
@@ -1833,7 +1852,7 @@
     }
 
     // HMI Manual Mode M5 Start Trigger Synchronization (อิงเวลาเริ่มตามเวลากด M5 บน HMI)
-    if (state.scheduleMode === 'manual' && (mqttData.m5_start === 1 || (mqttData.start_hour !== undefined && (mqttData.power === 1 || mqttData.m1_green === 1 || mqttData.y2_green === 1 || mqttData.y0_green === 1)))) {
+    if (state.scheduleMode === 'manual' && (mqttData.m5_start === 1 || (mqttData.start_hour !== undefined && (mqttData.power === 1 || mqttData.m1_green === 1 || mqttData.y2_green === 1)))) {
       state.schedule.enabled = true;
       if (mqttData.start_hour !== undefined && mqttData.start_minute !== undefined) {
         const sH = String(mqttData.start_hour).padStart(2, '0');
@@ -1881,43 +1900,81 @@
       saveSettings();
     }
 
-    // If in NONE mode or MANUAL mode without saved schedule, enforce STANDBY / IDLE
+    // Real-Time Machine Running & Lamp Status from PLC (Source of Truth: M2, M12, Y1, Y2)
+    const isPlcRed = (mqttData.m2_red === 1 || mqttData.m12_red === 1 || mqttData.red_lamp === 1 || mqttData.y0_red === 1);
+    const isPlcRunning = (mqttData.power === 1 || mqttData.y2_green === 1 || mqttData.m1_green === 1);
+    const isPlcYellow = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1);
+
     if (state.scheduleMode === 'none') {
       state.acOn = false;
       state.acPower = 0;
       if (state.systemState !== 'idle') {
         updateSystemState('idle');
       }
-    } else if (state.scheduleMode === 'manual' && !state.schedule.enabled) {
+    } else if (isPlcRed) {
+      // Hardware Red Lamp is Active on PLC (M2/M12 timeout / stop lock)
+      if (state.systemState !== 'timeout') {
+        updateSystemState('timeout');
+      }
       state.acOn = false;
       state.acPower = 0;
-      if (state.systemState !== 'idle') {
-        updateSystemState('idle');
+    } else if (isPlcRunning) {
+      // Machine is Running (Green Light Active)
+      if (state.systemState !== 'running') {
+        updateSystemState('running');
       }
+      state.acOn = true;
+      state.acPower = 1;
     } else {
-      // Real-Time Machine Running & Lamp Status from PLC (Source of Truth - M2, M12 Red Lamp)
-      const isPlcStopped = (mqttData.m2_red === 1 || mqttData.m12_red === 1 || mqttData.red_lamp === 1 || mqttData.y0_red === 1 || mqttData.y2_red === 1 || mqttData.machine_state === 'stopped');
-      const isPlcRunning = (mqttData.power === 1 || mqttData.y2_green === 1 || mqttData.y0_green === 1 || mqttData.m1_green === 1 || mqttData.machine_state === 'running');
-      const isPlcIdle = (mqttData.y1_yellow === 1 || mqttData.m3_yellow === 1 || (!isPlcRunning && !isPlcStopped));
-
-      if (isPlcStopped || state.systemState === 'stopped' || state.systemState === 'timeout') {
-        if (state.systemState !== 'stopped' && state.systemState !== 'timeout') {
-          updateSystemState('stopped');
-        }
+      // AC is OFF and Hardware Red Lamp is NOT Active (M2=0, M12=0)
+      if (now < state.userActionUntil && (state.systemState === 'stopped' || state.systemState === 'timeout')) {
+        // Keep optimistic stop/timeout during user action window (5 seconds)
         state.acOn = false;
         state.acPower = 0;
-      } else if (isPlcRunning) {
-        if (state.systemState !== 'running') {
-          updateSystemState('running');
+      } else if (state.scheduleMode === 'manual') {
+        if (!state.schedule.enabled) {
+          // Manual mode without schedule saved -> Step 1: IDLE (Yellow Blink)
+          state.acOn = false;
+          state.acPower = 0;
+          if (state.systemState !== 'idle') {
+            updateSystemState('idle');
+          }
+        } else {
+          // Manual mode with schedule saved -> check if expired or waiting
+          const onD = state.schedule.onDate || getTodayIso();
+          const offD = state.schedule.offDate || getTodayIso();
+          const stopDt = parseScheduleDateTime(offD, state.schedule.offTime);
+          if (stopDt && new Date() >= stopDt) {
+            if (state.systemState !== 'timeout') {
+              updateSystemState('timeout');
+            }
+          } else {
+            if (state.systemState !== 'ready') {
+              updateSystemState('ready');
+            }
+          }
+          state.acOn = false;
+          state.acPower = 0;
         }
-        state.acOn = true;
-        state.acPower = 1;
-      } else if (isPlcIdle) {
-        if (state.systemState !== 'idle' && state.systemState !== 'ready') {
-          updateSystemState(state.schedule.enabled ? 'ready' : 'idle');
+      } else if (state.scheduleMode === 'auto') {
+        const nowDate = new Date();
+        const curMins = nowDate.getHours() * 60 + nowDate.getMinutes();
+        const isInAutoTime = (curMins >= 8 * 60 && curMins < 17 * 60);
+        if (isInAutoTime) {
+          // เมื่อถึงเวลา (08:00 - 17:00) -> เขียวค้าง (RUNNING)
+          if (state.systemState !== 'running') {
+            updateSystemState('running');
+          }
+          state.acOn = true;
+          state.acPower = 1;
+        } else {
+          // นอกเวลา -> นอกเวลาเขียวจะกระพริบ (READY)
+          if (state.systemState !== 'ready') {
+            updateSystemState('ready');
+          }
+          state.acOn = false;
+          state.acPower = 0;
         }
-        state.acOn = false;
-        state.acPower = 0;
       }
     }
 
@@ -1968,13 +2025,14 @@
     }
 
     // PLC Real-Time Clock TRD D400-D406 Readback (ซิงค์เวลาจริงจาก PLC)
-    if (mqttData.plc_rtc_hour !== undefined && mqttData.plc_rtc_min !== undefined) {
+    const plcMin = (mqttData.plc_rtc_min !== undefined) ? mqttData.plc_rtc_min : mqttData.plc_rtc_minute;
+    if (mqttData.plc_rtc_hour !== undefined && plcMin !== undefined) {
       state.plcRtc = {
         year: Number(mqttData.plc_rtc_year || new Date().getFullYear()),
         month: Number(mqttData.plc_rtc_month || (new Date().getMonth() + 1)),
         day: Number(mqttData.plc_rtc_day || new Date().getDate()),
         hour: Number(mqttData.plc_rtc_hour),
-        minute: Number(mqttData.plc_rtc_min),
+        minute: Number(plcMin),
         second: Number(mqttData.plc_rtc_sec || 0),
         dayOfWeek: Number(mqttData.plc_rtc_dow || 0),
         timeStr: mqttData.plc_rtc_time || '',
@@ -2134,10 +2192,8 @@
       DOM.summaryDurationText.textContent = `${hours} ชั่วโมง ${String(mins).padStart(2, '0')} นาที`;
 
       const now = new Date();
-      if (state.systemState === 'stopped') {
-        DOM.summaryProgressText.textContent = '⛔ หยุดทำงานแล้ว (กดรีเซทเพื่อเริ่มรอบใหม่)';
-      } else if (state.systemState === 'timeout' || now >= stop) {
-        DOM.summaryProgressText.textContent = '🔴 ครบเวลาทำงานแล้ว (กดรีเซทเพื่อเริ่มรอบใหม่)';
+      if (state.systemState === 'stopped' || state.systemState === 'timeout' || now >= stop) {
+        DOM.summaryProgressText.textContent = '🔴 หมดเวลาทำงานแล้ว (ไฟแดงติดกระพริบ — กดรีเซทเพื่อเริ่มรอบใหม่)';
       } else if (now >= start && now < stop) {
         const remainMs = stop.getTime() - now.getTime();
         const remH = Math.floor(remainMs / (1000 * 60 * 60));
@@ -2264,11 +2320,8 @@
     });
 
     if (DOM.scheduleStatusTag) {
-      if (nextState === 'timeout') {
-        DOM.scheduleStatusTag.textContent = '⛔ Step 4: ครบเวลาทำงาน (ไฟแดงกระพริบ 1s — ต้องกด "รีเซท" เท่านั้น)';
-        DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
-      } else if (nextState === 'stopped') {
-        DOM.scheduleStatusTag.textContent = '⛔ Case 2: กดหยุดทำงาน (ไฟแดงติดค้าง — ต้องกด "รีเซท" เท่านั้น)';
+      if (nextState === 'timeout' || nextState === 'stopped') {
+        DOM.scheduleStatusTag.textContent = '⛔ Step 4: หมดเวลาทำงาน (ไฟแดงติดกระพริบ 1s — ต้องกด "รีเซท" เท่านั้น)';
         DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--pending';
       } else if (nextState === 'running') {
         const onT = state.schedule.onTime || DOM.onTime?.value || '';
@@ -2311,6 +2364,8 @@
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ตั้งเวลาแล้ว)');
         setLight(DOM.lightGreen, DOM.stateGreen, 'green-blink', 'READY', 'READY: พร้อมทำงาน / รอถึงเวลาเริ่ม');
         DOM.flowReady?.classList.add('state-flow__step--active');
+        const readyDot = DOM.flowReady?.querySelector('.state-flow__dot');
+        if (readyDot) readyDot.className = 'state-flow__dot state-flow__dot--green-blink';
         if (DOM.currentStateBadge) {
           const onT = state.schedule.onTime || DOM.onTime?.value || '';
           const onD = state.schedule.onDate || DOM.onDate?.value || '';
@@ -2333,6 +2388,8 @@
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ');
         setLight(DOM.lightGreen, DOM.stateGreen, 'green-solid', 'RUNNING', '🟢 RUNNING: เครื่องปรับอากาศกำลังทำงาน');
         DOM.flowRunning?.classList.add('state-flow__step--active');
+        const runningDot = DOM.flowRunning?.querySelector('.state-flow__dot');
+        if (runningDot) runningDot.className = 'state-flow__dot state-flow__dot--green';
         if (DOM.currentStateBadge) {
           DOM.currentStateBadge.textContent = 'Step 3: RUNNING (กำลังทำงาน)';
           DOM.currentStateBadge.className = 'state-badge state-badge--running';
@@ -2340,23 +2397,15 @@
         break;
 
       case 'timeout':
-        setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
-        setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
-        setLight(DOM.lightRed, DOM.stateRed, 'red-blink', 'TIMEOUT', 'TIMEOUT: ครบเวลาทำงาน (ต้องกดรีเซท)');
-        DOM.flowStopped?.classList.add('state-flow__step--active');
-        if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'Step 4: TIMEOUT (ครบเวลาทำงาน - กดรีเซท)';
-          DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
-        }
-        break;
-
       case 'stopped':
         setLight(DOM.lightYellow, DOM.stateYellow, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
         setLight(DOM.lightGreen, DOM.stateGreen, null, 'OFF', '❌ ดับ (ล็อกระบบ)');
-        setLight(DOM.lightRed, DOM.stateRed, 'red-solid', 'STOPPED', 'STOPPED: กดหยุดทำงาน (ต้องกดรีเซท)');
+        setLight(DOM.lightRed, DOM.stateRed, 'red-blink', 'TIMEOUT (หมดเวลา)', '⚠️ หมดเวลาทำงาน (ไฟแดงติดกระพริบ — ต้องกดรีเซท)');
         DOM.flowStopped?.classList.add('state-flow__step--active');
+        const timeoutDot = DOM.flowStopped?.querySelector('.state-flow__dot');
+        if (timeoutDot) timeoutDot.className = 'state-flow__dot state-flow__dot--red-blink';
         if (DOM.currentStateBadge) {
-          DOM.currentStateBadge.textContent = 'STOPPED (หยุดทำงาน - กดรีเซท)';
+          DOM.currentStateBadge.textContent = 'Step 4: TIMEOUT (หมดเวลาทำงาน — ไฟแดงติดกระพริบ)';
           DOM.currentStateBadge.className = 'state-badge state-badge--stopped';
         }
         break;
@@ -2821,7 +2870,7 @@
       return;
     }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
-      showToast('warning', 'ระบบหยุดทำงานแล้ว (ไฟแดงติดค้าง) — ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
+      showToast('warning', 'ระบบหยุดทำงานแล้ว (ไฟแดงติดกระพริบ) — ต้องกดปุ่ม "รีเซท" ก่อนเท่านั้น');
       return;
     }
     if (state.systemState !== 'running') {

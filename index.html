@@ -185,9 +185,9 @@
             <div class="indicator__glow"></div>
           </div>
           <div class="indicator__info">
-            <span class="indicator__label">ไฟแดง (Step 4 / Stop)</span>
+            <span class="indicator__label">ไฟแดง (Step 4 / หมดเวลา)</span>
             <span class="indicator__state" id="stateRed">OFF</span>
-            <span class="indicator__desc" id="descRed">Step 4: TIMEOUT (ครบเวลา) | STOPPED: หยุดทำงาน (กดรีเซท)</span>
+            <span class="indicator__desc" id="descRed">Step 4: TIMEOUT (หมดเวลาทำงาน — ไฟแดงติดกระพริบ)</span>
           </div>
         </div>
       </div>
@@ -195,7 +195,7 @@
       <!-- State Flow Diagram -->
       <div class="state-flow">
         <div class="state-flow__step state-flow__step--active" id="flowIdle">
-          <div class="state-flow__dot state-flow__dot--amber-blink"></div>
+          <div class="state-flow__dot state-flow__dot--amber"></div>
           <span>Step 1: IDLE (สแตนด์บาย / รอตั้งเวลา)</span>
         </div>
         <div class="state-flow__arrow">➔</div>
@@ -210,8 +210,8 @@
         </div>
         <div class="state-flow__arrow">➔</div>
         <div class="state-flow__step" id="flowStopped">
-          <div class="state-flow__dot state-flow__dot--red"></div>
-          <span>Step 4: STOP (หยุดทำงาน / ครบเวลา)</span>
+          <div class="state-flow__dot state-flow__dot--red-blink"></div>
+          <span>Step 4: TIMEOUT (หมดเวลาทำงาน — ไฟแดงติดกระพริบ)</span>
         </div>
         <div class="state-flow__arrow state-flow__arrow--reset">🔄 กดรีเซทวนลูป</div>
       </div>

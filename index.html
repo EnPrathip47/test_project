@@ -80,7 +80,10 @@
           <span class="section__icon">🌡️</span>
           อุณหภูมิเซนเซอร์ Real-time
         </h2>
-        <span class="section__badge" id="tempUpdateBadge">-- อัปเดตล่าสุด</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <a href="#sectionSensorHistory" class="section__history-link" title="คลิกเพื่อดูประวัติบันทึกข้อมูลย้อนหลัง 30 วัน">📈 ดูประวัติย้อนหลัง 30 วัน</a>
+          <span class="section__badge" id="tempUpdateBadge">-- อัปเดตล่าสุด</span>
+        </div>
       </div>
       <div class="sensor-grid">
         <!-- Sensor 1 -->
@@ -142,6 +145,312 @@
           </div>
           <div class="sensor-card__label">ความเข้มแสง</div>
           <div class="sensor-card__location">ความสว่างโดยรอบ (Ambient)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SENSOR HISTORY SECTION (บันทึกข้อมูลอุณหภูมิ & แสง ทุก 30 นาที / ย้อนหลัง 30 วัน) ── -->
+    <section class="section section--sensor-history" id="sectionSensorHistory">
+      <div class="section__header">
+        <div class="section__title-group">
+          <h2 class="section__title">
+            <span class="section__icon">📈</span>
+            ประวัติบันทึกค่าอุณหภูมิ &amp; ความเข้มแสง
+          </h2>
+          <p class="section__description">
+            จัดเก็บบันทึกค่าในเว็บอัตโนมัติทุก 30 นาที พร้อมระบุวันเวลา • เก็บข้อมูลสูงสุด 30 วัน (เกิน 30 วันลบอัตโนมัติ) • แยกเซนเซอร์แต่ละตัว
+          </p>
+        </div>
+        <div class="history-header-badges">
+          <span class="history-badge history-badge--next" id="historyNextLogBadge" title="เวลานับถอยหลังสู่การบันทึกข้อมูลรอบถัดไป">
+            ⏱️ บันทึกถัดไป: <strong id="historyCountdownText">--:--</strong>
+          </span>
+          <span class="history-badge history-badge--total" id="historyTotalBadge" title="จำนวนข้อมูลที่บันทึกไว้ในระบบ">
+            🗄️ สะสม: <strong id="historyTotalCount">0</strong> รายการ
+          </span>
+          <span class="history-badge history-badge--latest" id="historyLastSavedBadge">
+            📅 ล่าสุด: <span id="historyLastSavedText">ยังไม่มีการบันทึก</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div class="history-toolbar">
+        <div class="history-toolbar__actions">
+          <button type="button" class="btn btn--small btn--primary" id="historySnapshotBtn" title="บันทึกค่าเซนเซอร์สดปัจจุบันลงในประวัติทันที">
+            <span class="btn__icon">📸</span> บันทึกค่าปัจจุบันทันที
+          </button>
+          <button type="button" class="btn btn--small btn--excel" id="historyExportExcelBtn" title="ส่งออกข้อมูลเป็นไฟล์ Excel (.xlsx) พร้อมชีตข้อมูลและชีตสรุปสถิติสำหรับนำไปวิเคราะห์">
+            <span class="btn__icon">📊</span> ส่งออก Excel (.xlsx)
+          </button>
+          <button type="button" class="btn btn--small btn--ghost" id="historyExportCsvBtn" title="ดาวน์โหลดไฟล์ข้อมูลในรูปแบบ CSV">
+            <span class="btn__icon">📥</span> ส่งออก CSV
+          </button>
+          <button type="button" class="btn btn--small btn--ghost" id="historySampleDataBtn" title="สร้างข้อมูลจำลองย้อนหลัง 30 วัน เพื่อทดสอบการดูกราฟและตาราง">
+            <span class="btn__icon">🧪</span> จำลองข้อมูล 30 วัน
+          </button>
+          <button type="button" class="btn btn--small btn--ghost btn--danger-ghost" id="historyClearBtn" title="ล้างประวัติข้อมูลทั้งหมด">
+            <span class="btn__icon">🗑️</span> ล้างข้อมูล
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter & Controls Bar -->
+      <div class="history-filter-panel">
+        <div class="history-filter-group">
+          <span class="history-filter-label">ช่วงเวลาดูย้อนหลัง:</span>
+          <div class="history-range-pills" id="historyRangePills">
+            <button type="button" class="history-pill" data-range="today">วันนี้</button>
+            <button type="button" class="history-pill history-pill--active" data-range="24h">24 ชั่วโมงล่าสุด</button>
+            <button type="button" class="history-pill" data-range="7d">7 วันล่าสุด</button>
+            <button type="button" class="history-pill" data-range="30d">30 วันทั้งหมด</button>
+            <button type="button" class="history-pill" data-range="custom">กำหนดวันเอง</button>
+          </div>
+        </div>
+
+        <div class="history-custom-dates" id="historyCustomDates" style="display: none;">
+          <div class="history-date-input-group">
+            <label for="historyStartDate">ตั้งแต่วันที่:</label>
+            <input type="date" id="historyStartDate" class="history-date-input" />
+          </div>
+          <div class="history-date-input-group">
+            <label for="historyEndDate">ถึงวันที่:</label>
+            <input type="date" id="historyEndDate" class="history-date-input" />
+          </div>
+          <button type="button" class="btn btn--small btn--primary" id="historyApplyCustomDateBtn">ค้นหา</button>
+        </div>
+
+        <!-- Sensor Visibility Toggles -->
+        <div class="history-sensor-toggles">
+          <span class="history-filter-label">แสดงเซนเซอร์:</span>
+          <div class="history-toggle-chips">
+            <label class="history-toggle-chip history-toggle-chip--s1">
+              <input type="checkbox" id="toggleSensor1" checked />
+              <span class="history-toggle-dot history-toggle-dot--s1"></span>
+              เซนเซอร์ 1: Indoor
+            </label>
+            <label class="history-toggle-chip history-toggle-chip--s2">
+              <input type="checkbox" id="toggleSensor2" checked />
+              <span class="history-toggle-dot history-toggle-dot--s2"></span>
+              เซนเซอร์ 2: Outdoor
+            </label>
+            <label class="history-toggle-chip history-toggle-chip--s3">
+              <input type="checkbox" id="toggleSensor3" checked />
+              <span class="history-toggle-dot history-toggle-dot--s3"></span>
+              เซนเซอร์ 3: อินเวอร์เตอร์
+            </label>
+            <label class="history-toggle-chip history-toggle-chip--lux">
+              <input type="checkbox" id="toggleSensorLux" checked />
+              <span class="history-toggle-dot history-toggle-dot--lux"></span>
+              ความเข้มแสง (Lux)
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Statistics Cards (แยกเซนเซอร์แต่ละตัว) -->
+      <div class="history-stats-grid">
+        <!-- Card Sensor 1 -->
+        <div class="history-stat-card history-stat-card--s1">
+          <div class="history-stat-card__header">
+            <span class="history-stat-card__icon">🏠</span>
+            <span class="history-stat-card__title">เซนเซอร์ 1 (Indoor)</span>
+            <span class="history-stat-card__tag">ภายในห้อง</span>
+          </div>
+          <div class="history-stat-card__main">
+            <span class="history-stat-card__current" id="statCurS1">--.-</span>
+            <span class="history-stat-card__unit">°C</span>
+          </div>
+          <div class="history-stat-card__metrics">
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
+              <span class="history-stat-metric__val" id="statAvgS1">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
+              <span class="history-stat-metric__val" id="statMinS1">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">สูงสุด (Max)</span>
+              <span class="history-stat-metric__val" id="statMaxS1">--.- °C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Sensor 2 -->
+        <div class="history-stat-card history-stat-card--s2">
+          <div class="history-stat-card__header">
+            <span class="history-stat-card__icon">🌳</span>
+            <span class="history-stat-card__title">เซนเซอร์ 2 (Outdoor)</span>
+            <span class="history-stat-card__tag">ภายนอก</span>
+          </div>
+          <div class="history-stat-card__main">
+            <span class="history-stat-card__current" id="statCurS2">--.-</span>
+            <span class="history-stat-card__unit">°C</span>
+          </div>
+          <div class="history-stat-card__metrics">
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
+              <span class="history-stat-metric__val" id="statAvgS2">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
+              <span class="history-stat-metric__val" id="statMinS2">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">สูงสุด (Max)</span>
+              <span class="history-stat-metric__val" id="statMaxS2">--.- °C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Sensor 3 -->
+        <div class="history-stat-card history-stat-card--s3">
+          <div class="history-stat-card__header">
+            <span class="history-stat-card__icon">⚡</span>
+            <span class="history-stat-card__title">เซนเซอร์ 3 (Inverter)</span>
+            <span class="history-stat-card__tag">อินเวอร์เตอร์</span>
+          </div>
+          <div class="history-stat-card__main">
+            <span class="history-stat-card__current" id="statCurS3">--.-</span>
+            <span class="history-stat-card__unit">°C</span>
+          </div>
+          <div class="history-stat-card__metrics">
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
+              <span class="history-stat-metric__val" id="statAvgS3">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
+              <span class="history-stat-metric__val" id="statMinS3">--.- °C</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">สูงสุด (Max)</span>
+              <span class="history-stat-metric__val" id="statMaxS3">--.- °C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Sensor Lux -->
+        <div class="history-stat-card history-stat-card--lux">
+          <div class="history-stat-card__header">
+            <span class="history-stat-card__icon">☀️</span>
+            <span class="history-stat-card__title">ความเข้มแสง (Lux)</span>
+            <span class="history-stat-card__tag">ความสว่าง</span>
+          </div>
+          <div class="history-stat-card__main">
+            <span class="history-stat-card__current" id="statCurLux">--</span>
+            <span class="history-stat-card__unit">Lux</span>
+          </div>
+          <div class="history-stat-card__metrics">
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
+              <span class="history-stat-metric__val" id="statAvgLux">-- Lux</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
+              <span class="history-stat-metric__val" id="statMinLux">-- Lux</span>
+            </div>
+            <div class="history-stat-metric">
+              <span class="history-stat-metric__label">สูงสุด (Max)</span>
+              <span class="history-stat-metric__val" id="statMaxLux">-- Lux</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Chart Container -->
+      <div class="history-chart-card">
+        <div class="history-chart-header">
+          <div class="history-chart-title-wrap">
+            <h3 class="history-chart-title">📊 กราฟแนวโน้มข้อมูลย้อนหลัง</h3>
+            <span class="history-chart-subtitle" id="historyChartRangeSubtitle">กำลังแสดงข้อมูล 24 ชั่วโมงล่าสุด</span>
+          </div>
+          <div class="history-chart-tabs" id="historyChartTabs">
+            <button type="button" class="history-chart-tab history-chart-tab--active" data-mode="all">อุณหภูมิ &amp; แสง (แกนคู่)</button>
+            <button type="button" class="history-chart-tab" data-mode="temp">เฉพาะอุณหภูมิ (°C)</button>
+            <button type="button" class="history-chart-tab" data-mode="lux">เฉพาะความเข้มแสง (Lux)</button>
+          </div>
+        </div>
+
+        <div class="history-chart-viewport" id="historyChartViewport">
+          <canvas id="historyCanvas" class="history-canvas" height="320"></canvas>
+          <div class="history-chart-tooltip" id="historyChartTooltip" style="display: none;"></div>
+          <div class="history-chart-empty" id="historyChartEmpty" style="display: none;">
+            <span class="history-chart-empty__icon">📭</span>
+            <p>ไม่พบข้อมูลในช่วงเวลาที่เลือก</p>
+          </div>
+        </div>
+
+        <div class="history-chart-legend">
+          <div class="history-legend-item history-legend-item--s1">
+            <span class="history-legend-color"></span> เซนเซอร์ 1: Indoor (°C)
+          </div>
+          <div class="history-legend-item history-legend-item--s2">
+            <span class="history-legend-color"></span> เซนเซอร์ 2: Outdoor (°C)
+          </div>
+          <div class="history-legend-item history-legend-item--s3">
+            <span class="history-legend-color"></span> เซนเซอร์ 3: อินเวอร์เตอร์ (°C)
+          </div>
+          <div class="history-legend-item history-legend-item--lux">
+            <span class="history-legend-color"></span> ความเข้มแสง (Lux - แกนขวา)
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Data Table Card -->
+      <div class="history-table-card">
+        <div class="history-table-header">
+          <div class="history-table-title-wrap">
+            <h3 class="history-table-title">📋 ตารางบันทึกข้อมูลย้อนหลัง (ระบุวันเวลาละเอียด)</h3>
+            <span class="history-table-count" id="historyTableCountText">แสดง 0 รายการ</span>
+          </div>
+          <div class="history-table-search-wrap">
+            <input type="text" id="historySearchInput" class="history-search-input" placeholder="🔍 ค้นหาวันที่หรือเวลา (เช่น 06/10)..." />
+          </div>
+        </div>
+
+        <div class="history-table-responsive">
+          <table class="history-table" id="historyTable">
+            <thead>
+              <tr>
+                <th style="width: 60px;">#</th>
+                <th>📅 วันที่</th>
+                <th>⏰ เวลา</th>
+                <th class="th--s1">🔵 เซนเซอร์ 1 (Indoor)</th>
+                <th class="th--s2">🟠 เซนเซอร์ 2 (Outdoor)</th>
+                <th class="th--s3">🟣 เซนเซอร์ 3 (Inverter)</th>
+                <th class="th--lux">🟡 ความเข้มแสง (Lux)</th>
+                <th>🏷️ บันทึกแบบ</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="8" class="history-table-empty">
+                  กำลังโหลดข้อมูลประวัติ...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Table Pagination -->
+        <div class="history-table-pagination" id="historyPagination">
+          <div class="history-pagination-info" id="historyPaginationInfo">
+            แสดง 0 - 0 จาก 0 รายการ
+          </div>
+          <div class="history-pagination-controls">
+            <label for="historyPageSizeSelect" class="history-page-size-label">แถวต่อหน้า:</label>
+            <select id="historyPageSizeSelect" class="history-page-size-select">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <button type="button" class="btn btn--small btn--ghost" id="historyPrevPageBtn" disabled>◀ ก่อนหน้า</button>
+            <span class="history-page-current" id="historyPageCurrentText">หน้า 1 / 1</span>
+            <button type="button" class="btn btn--small btn--ghost" id="historyNextPageBtn" disabled>ถัดไป ▶</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1367,7 +1676,7 @@
                   <h4>โหมดจำลอง (Simulation)</h4>
                   <p><code
                       style="background:#e2e8f0; padding: 2px 6px; border-radius:4px;">SIMULATION_MODE = true</code> —
-                    ทดสอบได้โดยไม่ต้องต่อ PLC จริง จำลอง Sensor ค่า 25/28/16°C</p>
+                    ทดสอบได้โดยไม่ต้องต่อ PLC จริง จำลอง Sensor ค่า 31/49/29°C</p>
                 </div>
               </div>
             </div>
@@ -1647,15 +1956,16 @@
   "power": 1,
   "temperature": 25,
   "fan": 0,
-  "temp1": 25.0,
-  "temp2": 28.5,
-  "temp3": 16.0,
+  "temp1": 31.0,
+  "temp2": 49.0,
+  "temp3": 29.0,
+  "lux": 394,
   "esp32_online": 1,
   "plc_online": 1,
   "m1_green": 1,
   "m2_red": 0,
   "m3_yellow": 0,
-  "plc_rtc_hour": 14,
+  "plc_rtc_hour": 19,
   "plc_rtc_min": 30
 }</pre>
                   <p style="font-size:0.82rem; margin-top:6px; color:var(--text-muted, #94a3b8);">
@@ -1848,6 +2158,12 @@
                 จะกระจายข้อมูลไปอัปเดตหน้าจอของทุกอุปกรณ์ที่เปิดอยู่พร้อมกันทันที
               </div>
             </div>
+            <div class="manual-faq-item">
+              <div class="manual-faq-question">Q: ระบบบันทึกประวัติอุณหภูมิ & แสง ทำงานอย่างไร และส่งออกไปวิเคราะห์ต่อใน Excel ได้อย่างไร?</div>
+              <div class="manual-faq-answer">
+                <strong>บันทึกอัตโนมัติทุก 30 นาที & ส่งออก Excel (.xlsx):</strong> ระบบจะจัดเก็บค่าอุณหภูมิทั้ง 3 เซนเซอร์และความเข้มแสงลงในฐานข้อมูล <code>IndexedDB</code> อัตโนมัติทุก 30 นาที พร้อมระบุวันเวลาละเอียด และตัดข้อมูลที่เก่าเกิน 30 วันทิ้งอัตโนมัติ โดยผู้ใช้สามารถกดปุ่ม <code>📊 ส่งออก Excel (.xlsx)</code> เพื่อดาวน์โหลด Workbook ที่มีทั้งชีตข้อมูลดิบ (Numeric สำหรับคำนวณสูตร) และชีตสรุปสถิติ (Mean, Min, Max, SD, Range) นำไปทำ Pivot Table หรือพล็อตกราฟวิเคราะห์ต่อได้ทันที
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1874,6 +2190,8 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js"></script>
   <script src="mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 

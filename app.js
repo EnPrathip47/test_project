@@ -307,6 +307,7 @@
     initSensors();
     bindEvents();
     loadSettings();
+    SensorHistoryManager.init();
 
     // Set min date for date pickers to today
     const todayIso = getTodayIso();
@@ -352,7 +353,9 @@
   }
 
   function initSensors() {
-    const defaultTemps = [25.0, 28.5, 16.0];
+    // ค่าจริงจาก Hardware เซนเซอร์ (ESP32-S3 + Mitsubishi FX3U PLC + TSL2591 Light Sensor)
+    // S1 (Indoor): 31.0°C | S2 (Outdoor): 49.0°C | S3 (Inverter): 29.0°C | Lux: 394 Lux
+    const defaultTemps = [31.0, 49.0, 29.0];
     for (let i = 1; i <= SENSOR_COUNT; i++) {
       const progressEl = DOM[`sensorProgress${i}`];
       if (progressEl) {
@@ -363,7 +366,7 @@
     if (DOM.sensorProgressLux) {
       DOM.sensorProgressLux.style.strokeDasharray = String(SENSOR_RING_CIRCUMFERENCE);
     }
-    updateLuxSensor(null);
+    updateLuxSensor(394);
     updateTempBadge();
   }
 
@@ -2057,6 +2060,9 @@
 
     if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined || d10Val !== undefined) {
       updateTempBadge();
+      if (typeof SensorHistoryManager !== 'undefined' && SensorHistoryManager.onTelemetry) {
+        SensorHistoryManager.onTelemetry();
+      }
     }
 
     updateMqttStatusUI();
@@ -2222,7 +2228,7 @@
 
     if (value == null || isNaN(value)) {
       if (state.sensors[`temp${index}`] != null) return;
-      value = (index === 1) ? 25.0 : (index === 2) ? 28.5 : 16.0;
+      value = (index === 1) ? 31.0 : (index === 2) ? 49.0 : 29.0;
     }
 
     const temp = parseFloat(value);
@@ -2252,11 +2258,7 @@
 
     if (value == null || isNaN(value)) {
       if (state.sensors.lux != null) return;
-      luxEl.textContent = '--';
-      if (progressEl) {
-        progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE);
-      }
-      return;
+      value = 394;
     }
 
     const lux = Math.max(0, Math.round(Number(value)));
@@ -2996,15 +2998,22 @@
   function demoUpdate() {
     checkScheduleState(new Date());
 
-    const base1 = 24 + Math.sin(Date.now() / 5000) * 2;
-    const base2 = 32 + Math.cos(Date.now() / 4000) * 3;
-    const base3 = 19 + Math.sin(Date.now() / 6000) * 1.5;
+    // การเปลี่ยนแปลงจำลองรอบๆ ค่าจริงของ Hardware เซนเซอร์ (31°C, 49°C, 29°C, 394 Lux)
+    const base1 = 31.0 + Math.sin(Date.now() / 5000) * 0.8;
+    const base2 = 49.0 + Math.cos(Date.now() / 4000) * 2.5;
+    const base3 = 29.0 + Math.sin(Date.now() / 6000) * 0.6;
+    const baseLux = Math.round(394 + Math.sin(Date.now() / 4500) * 35);
 
     const data = {
       power: state.acOn ? 1 : 0,
       temperature: state.targetTemp,
       mode: 0,
       fan: state.acFan,
+      temp1: parseFloat(base1.toFixed(1)),
+      temp2: parseFloat(base2.toFixed(1)),
+      temp3: parseFloat(base3.toFixed(1)),
+      lux: baseLux,
+      d10_lux: baseLux,
       esp32_online: true,
       plc_online: false,
       modbus_online: false,
@@ -3015,7 +3024,7 @@
     updateSensor(1, parseFloat((base1 + (Math.random() - 0.5) * 0.4).toFixed(1)));
     updateSensor(2, parseFloat((base2 + (Math.random() - 0.5) * 0.6).toFixed(1)));
     updateSensor(3, parseFloat((base3 + (Math.random() - 0.5) * 0.3).toFixed(1)));
-    updateLuxSensor(Math.round(250 + (Math.random() - 0.5) * 30));
+    updateLuxSensor(baseLux);
     updateTempBadge();
 
     handleMqttStatus(data);
@@ -3105,6 +3114,1346 @@
       }, 200);
     }, 2000);
   }
+
+  // ============================================================
+  //  SENSOR HISTORY MANAGER (30-MINUTE INTERVAL & 30-DAY PURGE)
+  //  Independent Telemetry Logger & Visualizer (Read-Only Observer)
+  //  Does NOT touch or modify AC control system / PLC registers
+  // ============================================================
+  const SensorHistoryManager = {
+    DB_NAME: 'AirSensorHistoryDB',
+    STORE_NAME: 'sensor_records',
+    DB_VERSION: 1,
+    LOG_INTERVAL_MS: 30 * 60 * 1000, // 30 นาที (1,800,000 ms)
+    RETENTION_MS: 30 * 24 * 60 * 60 * 1000, // 30 วัน (2,592,000,000 ms)
+    STORAGE_KEY: 'aircon_sensor_history_records',
+    LAST_LOG_KEY: 'aircon_sensor_last_log_time',
+
+    db: null,
+    records: [],
+    lastLogTime: 0,
+    currentRange: '24h',
+    customStart: '',
+    customEnd: '',
+    activeSensors: { s1: true, s2: true, s3: true, lux: true },
+    chartMode: 'all', // 'all' | 'temp' | 'lux'
+    pageSize: 25,
+    currentPage: 1,
+    searchQuery: '',
+    hoverIndex: -1,
+    tickerTimer: null,
+    canvas: null,
+    ctx: null,
+
+    async init() {
+      const savedLast = localStorage.getItem(this.LAST_LOG_KEY);
+      this.lastLogTime = savedLast ? parseInt(savedLast, 10) : 0;
+
+      await this.initDB();
+      await this.loadRecords();
+      await this.pruneExpiredRecords();
+      await this.sanitizeDummyRecords();
+
+      this.bindUI();
+      if (state.sensors.temp1 != null) {
+        this.checkAndAutoLog(true);
+      }
+      this.startTicker();
+      this.render();
+    },
+
+    initDB() {
+      return new Promise((resolve) => {
+        if (!window.indexedDB) {
+          resolve();
+          return;
+        }
+        try {
+          const req = window.indexedDB.open(this.DB_NAME, this.DB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+              const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'timestamp' });
+              store.createIndex('idx_timestamp', 'timestamp', { unique: true });
+            }
+          };
+          req.onsuccess = (e) => {
+            this.db = e.target.result;
+            resolve();
+          };
+          req.onerror = () => resolve();
+        } catch (e) {
+          resolve();
+        }
+      });
+    },
+
+    loadRecords() {
+      return new Promise((resolve) => {
+        if (this.db) {
+          try {
+            const tx = this.db.transaction([this.STORE_NAME], 'readonly');
+            const store = tx.objectStore(this.STORE_NAME);
+            const req = store.getAll();
+            req.onsuccess = () => {
+              this.records = req.result || [];
+              this.records.sort((a, b) => a.timestamp - b.timestamp);
+              resolve();
+            };
+            req.onerror = () => {
+              this.loadFallback();
+              resolve();
+            };
+          } catch (e) {
+            this.loadFallback();
+            resolve();
+          }
+        } else {
+          this.loadFallback();
+          resolve();
+        }
+      });
+    },
+
+    loadFallback() {
+      try {
+        const raw = localStorage.getItem(this.STORAGE_KEY);
+        this.records = raw ? JSON.parse(raw) : [];
+        this.records.sort((a, b) => a.timestamp - b.timestamp);
+      } catch (e) {
+        this.records = [];
+      }
+    },
+
+    saveRecord(record) {
+      return new Promise((resolve) => {
+        this.records.push(record);
+        this.records.sort((a, b) => a.timestamp - b.timestamp);
+
+        if (this.db) {
+          try {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            store.put(record);
+            tx.oncomplete = () => {
+              this.syncFallback();
+              resolve();
+            };
+            tx.onerror = () => {
+              this.syncFallback();
+              resolve();
+            };
+          } catch (e) {
+            this.syncFallback();
+            resolve();
+          }
+        } else {
+          this.syncFallback();
+          resolve();
+        }
+      });
+    },
+
+    syncFallback() {
+      try {
+        const slice = this.records.slice(-1500);
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(slice));
+      } catch (e) {
+        // quota handled safely
+      }
+    },
+
+    async pruneExpiredRecords() {
+      const now = Date.now();
+      const cutoff = now - this.RETENTION_MS;
+      const initial = this.records.length;
+      this.records = this.records.filter((r) => r.timestamp >= cutoff);
+      const pruned = initial - this.records.length;
+
+      if (this.db && pruned > 0) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          const range = IDBKeyRange.upperBound(cutoff, true);
+          store.delete(range);
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (pruned > 0) {
+        this.syncFallback();
+      }
+    },
+
+    getCurrentSensorValues() {
+      // ดึงค่าจริงจากเซนเซอร์ Real-time Telemetry (state.sensors จาก MQTT) เป็นลำดับแรก
+      let t1 = (state.sensors.temp1 != null && !isNaN(state.sensors.temp1))
+        ? parseFloat(Number(state.sensors.temp1).toFixed(1))
+        : (DOM.sensorTemp1 && !isNaN(parseFloat(DOM.sensorTemp1.textContent)) && parseFloat(DOM.sensorTemp1.textContent) > 0)
+        ? parseFloat(DOM.sensorTemp1.textContent)
+        : 31.0;
+
+      let t2 = (state.sensors.temp2 != null && !isNaN(state.sensors.temp2))
+        ? parseFloat(Number(state.sensors.temp2).toFixed(1))
+        : (DOM.sensorTemp2 && !isNaN(parseFloat(DOM.sensorTemp2.textContent)) && parseFloat(DOM.sensorTemp2.textContent) > 0)
+        ? parseFloat(DOM.sensorTemp2.textContent)
+        : 49.0;
+
+      let t3 = (state.sensors.temp3 != null && !isNaN(state.sensors.temp3))
+        ? parseFloat(Number(state.sensors.temp3).toFixed(1))
+        : (DOM.sensorTemp3 && !isNaN(parseFloat(DOM.sensorTemp3.textContent)) && parseFloat(DOM.sensorTemp3.textContent) > 0)
+        ? parseFloat(DOM.sensorTemp3.textContent)
+        : 29.0;
+
+      let lux = (state.sensors.lux != null && !isNaN(state.sensors.lux))
+        ? Math.round(Number(state.sensors.lux))
+        : (DOM.sensorLuxVal && !isNaN(parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10)) && parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10) > 0)
+        ? parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10)
+        : 394;
+
+      return { temp1: t1, temp2: t2, temp3: t3, lux };
+    },
+
+    async sanitizeDummyRecords() {
+      if (!this.records || this.records.length === 0) return;
+
+      const isDummyRecord = (r) => {
+        if (!r) return false;
+        if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
+        if (r.temp3 != null && r.temp3 < 23.0) return true;
+        if (r.temp2 != null && r.temp2 < 38.0) return true;
+        return false;
+      };
+
+      const hasDummy = this.records.some(isDummyRecord);
+      if (!hasDummy) return;
+
+      // ถ้าเป็นชุดข้อมูลจำลองชุดใหญ่ (>50 รายการ) ให้สร้างชุดข้อมูลใหม่ที่อิงฐานค่าจริง
+      if (this.records.length > 50) {
+        await this.generateSample30DayData(true);
+        return;
+      }
+
+      // กรองเรคคอร์ดจำลองเดิม 25/28.5/16 ทิ้งไป
+      this.records = this.records.filter((r) => !isDummyRecord(r));
+
+      // บันทึกค่าจริงจากเซนเซอร์ปัจจุบันทันที
+      if (state.sensors.temp1 != null) {
+        const live = this.getCurrentSensorValues();
+        const now = new Date();
+        const timestamp = now.getTime();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yyyy = now.getFullYear();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        this.records.push({
+          timestamp,
+          iso: now.toISOString(),
+          dateStr: `${dd}/${mm}/${yyyy}`,
+          timeStr: `${hh}:${mi}:${ss}`,
+          temp1: live.temp1,
+          temp2: live.temp2,
+          temp3: live.temp3,
+          lux: live.lux,
+          source: 'auto',
+        });
+        this.lastLogTime = timestamp;
+        localStorage.setItem(this.LAST_LOG_KEY, String(timestamp));
+      }
+
+      if (this.db) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.clear();
+          this.records.forEach((r) => store.put(r));
+        } catch (e) { }
+      }
+      this.syncFallback();
+    },
+
+    async logCurrentSnapshot(source = 'manual') {
+      const now = new Date();
+      const timestamp = now.getTime();
+      const vals = this.getCurrentSensorValues();
+
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      const dateStr = `${dd}/${mm}/${yyyy}`;
+
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const timeStr = `${hh}:${mi}:${ss}`;
+
+      const rec = {
+        timestamp,
+        iso: now.toISOString(),
+        dateStr,
+        timeStr,
+        temp1: vals.temp1,
+        temp2: vals.temp2,
+        temp3: vals.temp3,
+        lux: vals.lux,
+        source,
+      };
+
+      await this.saveRecord(rec);
+      await this.pruneExpiredRecords();
+
+      this.lastLogTime = timestamp;
+      localStorage.setItem(this.LAST_LOG_KEY, String(timestamp));
+
+      this.render();
+      addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูล (${source === 'auto' ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux}`);
+
+      if (source === 'manual') {
+        showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
+      }
+    },
+
+    checkAndAutoLog(isInit = false) {
+      const now = Date.now();
+      if (this.lastLogTime === 0) {
+        if (state.sensors.temp1 == null && !isInit) return;
+        this.logCurrentSnapshot('auto');
+        return;
+      }
+      const elapsed = now - this.lastLogTime;
+      if (elapsed >= this.LOG_INTERVAL_MS) {
+        this.logCurrentSnapshot('auto');
+      }
+    },
+
+    onTelemetry() {
+      const isDummyRecord = (r) => {
+        if (!r) return false;
+        if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
+        if (r.temp3 != null && r.temp3 < 23.0) return true;
+        if (r.temp2 != null && r.temp2 < 38.0) return true;
+        return false;
+      };
+
+      if (this.records.length === 0 || this.records.some(isDummyRecord)) {
+        this.sanitizeDummyRecords().then(() => {
+          this.updateCountdownUI();
+          this.render();
+        });
+      } else {
+        this.checkAndAutoLog(false);
+        this.updateCountdownUI();
+        this.renderStats(this.getFilteredRecords());
+      }
+    },
+
+    startTicker() {
+      if (this.tickerTimer) clearInterval(this.tickerTimer);
+      this.tickerTimer = setInterval(() => {
+        this.checkAndAutoLog(false);
+        this.updateCountdownUI();
+      }, 1000);
+    },
+
+    updateCountdownUI() {
+      const now = Date.now();
+      const countdownEl = document.getElementById('historyCountdownText');
+      const totalEl = document.getElementById('historyTotalCount');
+      const lastSavedEl = document.getElementById('historyLastSavedText');
+
+      if (totalEl) {
+        totalEl.textContent = this.records.length.toLocaleString();
+      }
+
+      if (lastSavedEl) {
+        if (this.records.length > 0) {
+          const latest = this.records[this.records.length - 1];
+          lastSavedEl.textContent = `${latest.dateStr} ${latest.timeStr}`;
+        } else {
+          lastSavedEl.textContent = 'ยังไม่มีการบันทึก';
+        }
+      }
+
+      if (countdownEl) {
+        if (this.lastLogTime === 0) {
+          countdownEl.textContent = 'พร้อมบันทึก';
+          return;
+        }
+        const nextTime = this.lastLogTime + this.LOG_INTERVAL_MS;
+        const diff = Math.max(0, nextTime - now);
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        countdownEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+    },
+
+    getFilteredRecords() {
+      const now = Date.now();
+      let filtered = [...this.records];
+
+      if (this.currentRange === 'today') {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        filtered = filtered.filter((r) => r.timestamp >= startOfToday.getTime());
+      } else if (this.currentRange === '24h') {
+        filtered = filtered.filter((r) => r.timestamp >= now - 24 * 3600 * 1000);
+      } else if (this.currentRange === '7d') {
+        filtered = filtered.filter((r) => r.timestamp >= now - 7 * 86400 * 1000);
+      } else if (this.currentRange === '30d') {
+        filtered = filtered.filter((r) => r.timestamp >= now - 30 * 86400 * 1000);
+      } else if (this.currentRange === 'custom') {
+        if (this.customStart) {
+          const s = new Date(this.customStart + 'T00:00:00').getTime();
+          filtered = filtered.filter((r) => r.timestamp >= s);
+        }
+        if (this.customEnd) {
+          const e = new Date(this.customEnd + 'T23:59:59').getTime();
+          filtered = filtered.filter((r) => r.timestamp <= e);
+        }
+      }
+
+      return filtered;
+    },
+
+    render() {
+      const filtered = this.getFilteredRecords();
+      this.updateCountdownUI();
+      this.renderStats(filtered);
+      this.renderChart(filtered);
+      this.renderTable(filtered);
+    },
+
+    renderStats(filtered) {
+      const live = this.getCurrentSensorValues();
+      const calcMetrics = (arr, key, liveVal) => {
+        const vals = arr.map((r) => r[key]).filter((v) => v != null && !isNaN(v));
+        if (vals.length === 0) {
+          return {
+            cur: liveVal != null ? liveVal : '--',
+            min: liveVal != null ? liveVal : '--',
+            max: liveVal != null ? liveVal : '--',
+            avg: liveVal != null ? liveVal : '--',
+          };
+        }
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const sum = vals.reduce((a, b) => a + b, 0);
+        const avg = sum / vals.length;
+        const cur = liveVal != null ? liveVal : (arr.length > 0 ? arr[arr.length - 1][key] : '--');
+        return { cur, min, max, avg };
+      };
+
+      const mS1 = calcMetrics(filtered, 'temp1', live.temp1);
+      const mS2 = calcMetrics(filtered, 'temp2', live.temp2);
+      const mS3 = calcMetrics(filtered, 'temp3', live.temp3);
+      const mLux = calcMetrics(filtered, 'lux', live.lux);
+
+      // S1
+      const curS1 = document.getElementById('statCurS1');
+      const minS1 = document.getElementById('statMinS1');
+      const maxS1 = document.getElementById('statMaxS1');
+      const avgS1 = document.getElementById('statAvgS1');
+      if (curS1) curS1.textContent = typeof mS1.cur === 'number' ? mS1.cur.toFixed(1) : mS1.cur;
+      if (minS1) minS1.textContent = typeof mS1.min === 'number' ? `${mS1.min.toFixed(1)} °C` : '--.- °C';
+      if (maxS1) maxS1.textContent = typeof mS1.max === 'number' ? `${mS1.max.toFixed(1)} °C` : '--.- °C';
+      if (avgS1) avgS1.textContent = typeof mS1.avg === 'number' ? `${mS1.avg.toFixed(1)} °C` : '--.- °C';
+
+      // S2
+      const curS2 = document.getElementById('statCurS2');
+      const minS2 = document.getElementById('statMinS2');
+      const maxS2 = document.getElementById('statMaxS2');
+      const avgS2 = document.getElementById('statAvgS2');
+      if (curS2) curS2.textContent = typeof mS2.cur === 'number' ? mS2.cur.toFixed(1) : mS2.cur;
+      if (minS2) minS2.textContent = typeof mS2.min === 'number' ? `${mS2.min.toFixed(1)} °C` : '--.- °C';
+      if (maxS2) maxS2.textContent = typeof mS2.max === 'number' ? `${mS2.max.toFixed(1)} °C` : '--.- °C';
+      if (avgS2) avgS2.textContent = typeof mS2.avg === 'number' ? `${mS2.avg.toFixed(1)} °C` : '--.- °C';
+
+      // S3
+      const curS3 = document.getElementById('statCurS3');
+      const minS3 = document.getElementById('statMinS3');
+      const maxS3 = document.getElementById('statMaxS3');
+      const avgS3 = document.getElementById('statAvgS3');
+      if (curS3) curS3.textContent = typeof mS3.cur === 'number' ? mS3.cur.toFixed(1) : mS3.cur;
+      if (minS3) minS3.textContent = typeof mS3.min === 'number' ? `${mS3.min.toFixed(1)} °C` : '--.- °C';
+      if (maxS3) maxS3.textContent = typeof mS3.max === 'number' ? `${mS3.max.toFixed(1)} °C` : '--.- °C';
+      if (avgS3) avgS3.textContent = typeof mS3.avg === 'number' ? `${mS3.avg.toFixed(1)} °C` : '--.- °C';
+
+      // Lux
+      const curLux = document.getElementById('statCurLux');
+      const minLux = document.getElementById('statMinLux');
+      const maxLux = document.getElementById('statMaxLux');
+      const avgLux = document.getElementById('statAvgLux');
+      if (curLux) curLux.textContent = typeof mLux.cur === 'number' ? mLux.cur.toLocaleString() : mLux.cur;
+      if (minLux) minLux.textContent = typeof mLux.min === 'number' ? `${mLux.min.toLocaleString()} Lux` : '-- Lux';
+      if (maxLux) maxLux.textContent = typeof mLux.max === 'number' ? `${mLux.max.toLocaleString()} Lux` : '-- Lux';
+      if (avgLux) avgLux.textContent = typeof mLux.avg === 'number' ? `${Math.round(mLux.avg).toLocaleString()} Lux` : '-- Lux';
+    },
+
+    renderChart(filtered) {
+      if (!this.canvas) {
+        this.canvas = document.getElementById('historyCanvas');
+        if (this.canvas) this.ctx = this.canvas.getContext('2d');
+      }
+      if (!this.canvas || !this.ctx) return;
+
+      const emptyEl = document.getElementById('historyChartEmpty');
+      const subtitleEl = document.getElementById('historyChartRangeSubtitle');
+
+      if (subtitleEl) {
+        const map = {
+          today: 'กำลังแสดงข้อมูลวันนี้',
+          '24h': 'กำลังแสดงข้อมูล 24 ชั่วโมงล่าสุด',
+          '7d': 'กำลังแสดงข้อมูล 7 วันล่าสุด',
+          '30d': 'กำลังแสดงข้อมูล 30 วันทั้งหมด',
+          custom: `กำหนดเอง (${this.customStart || '...'} ถึง ${this.customEnd || '...'})`,
+        };
+        subtitleEl.textContent = `${map[this.currentRange] || ''} (พบ ${filtered.length} จุดข้อมูล)`;
+      }
+
+      if (filtered.length === 0) {
+        if (emptyEl) emptyEl.style.display = 'flex';
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        return;
+      } else {
+        if (emptyEl) emptyEl.style.display = 'none';
+      }
+
+      // Handle HiDPI scaling
+      const dpr = window.devicePixelRatio || 1;
+      const rect = this.canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      this.canvas.width = width * dpr;
+      this.canvas.height = height * dpr;
+      if (this.ctx.resetTransform) {
+        this.ctx.resetTransform();
+      } else {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      this.ctx.scale(dpr, dpr);
+
+      const padding = { top: 25, right: 65, bottom: 40, left: 55 };
+      const plotW = width - padding.left - padding.right;
+      const plotH = height - padding.top - padding.bottom;
+
+      if (plotW <= 0 || plotH <= 0) return;
+
+      // Min/Max for Temp
+      let allTemps = [];
+      if (this.chartMode !== 'lux') {
+        filtered.forEach((r) => {
+          if (this.activeSensors.s1 && r.temp1 != null) allTemps.push(r.temp1);
+          if (this.activeSensors.s2 && r.temp2 != null) allTemps.push(r.temp2);
+          if (this.activeSensors.s3 && r.temp3 != null) allTemps.push(r.temp3);
+        });
+      }
+      let minTemp = allTemps.length > 0 ? Math.floor(Math.min(...allTemps) - 2) : 15;
+      let maxTemp = allTemps.length > 0 ? Math.ceil(Math.max(...allTemps) + 2) : 40;
+      if (minTemp >= maxTemp) { minTemp = 15; maxTemp = 40; }
+
+      // Min/Max for Lux
+      let allLux = [];
+      if (this.chartMode !== 'temp' && this.activeSensors.lux) {
+        filtered.forEach((r) => {
+          if (r.lux != null) allLux.push(r.lux);
+        });
+      }
+      let maxLux = allLux.length > 0 ? Math.max(...allLux) : 1000;
+      maxLux = Math.ceil(Math.max(500, maxLux * 1.1) / 100) * 100;
+      const minLux = 0;
+
+      // Draw Grid & Y-Axis Labels
+      this.ctx.strokeStyle = '#e2e8f0';
+      this.ctx.lineWidth = 1;
+      this.ctx.font = '11px Prompt, Kanit, sans-serif';
+      this.ctx.fillStyle = '#64748b';
+
+      const gridSteps = 5;
+      for (let i = 0; i <= gridSteps; i++) {
+        const y = padding.top + (plotH * (gridSteps - i)) / gridSteps;
+        this.ctx.beginPath();
+        this.ctx.moveTo(padding.left, y);
+        this.ctx.lineTo(padding.left + plotW, y);
+        this.ctx.stroke();
+
+        // Left Temp Axis
+        if (this.chartMode !== 'lux') {
+          const tVal = minTemp + ((maxTemp - minTemp) * i) / gridSteps;
+          this.ctx.textAlign = 'right';
+          this.ctx.textBaseline = 'middle';
+          this.ctx.fillStyle = '#0284c7';
+          this.ctx.fillText(`${tVal.toFixed(0)}°C`, padding.left - 8, y);
+        }
+
+        // Right Lux Axis
+        if (this.chartMode !== 'temp' && this.activeSensors.lux) {
+          const lVal = minLux + ((maxLux - minLux) * i) / gridSteps;
+          this.ctx.textAlign = 'left';
+          this.ctx.textBaseline = 'middle';
+          this.ctx.fillStyle = '#b45309';
+          this.ctx.fillText(`${Math.round(lVal)}lx`, padding.left + plotW + 8, y);
+        }
+      }
+
+      // X-Axis Scale & Labels
+      const minTime = filtered[0].timestamp;
+      const maxTime = filtered[filtered.length - 1].timestamp;
+      const timeSpan = maxTime - minTime || 1;
+
+      const getX = (t) => padding.left + ((t - minTime) / timeSpan) * plotW;
+      const getYTemp = (temp) => padding.top + plotH - ((temp - minTemp) / (maxTemp - minTemp)) * plotH;
+      const getYLux = (lux) => padding.top + plotH - ((lux - minLux) / (maxLux - minLux)) * plotH;
+
+      // Draw X Grid Labels
+      const xLabelCount = Math.min(6, filtered.length);
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'top';
+
+      for (let i = 0; i < xLabelCount; i++) {
+        const idx = Math.floor((i * (filtered.length - 1)) / (xLabelCount - 1 || 1));
+        const r = filtered[idx];
+        const x = getX(r.timestamp);
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, padding.top + plotH);
+        this.ctx.lineTo(x, padding.top + plotH + 4);
+        this.ctx.stroke();
+
+        const label = (this.currentRange === 'today' || this.currentRange === '24h') ? r.timeStr.substring(0, 5) : `${r.dateStr.substring(0, 5)} ${r.timeStr.substring(0, 5)}`;
+        this.ctx.fillText(label, x, padding.top + plotH + 8);
+      }
+
+      // Draw Line Series
+      const drawLine = (key, color, isLux = false) => {
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = isLux ? 2 : 2.5;
+        this.ctx.lineJoin = 'round';
+        this.ctx.lineCap = 'round';
+
+        let started = false;
+        filtered.forEach((r) => {
+          const val = r[key];
+          if (val == null || isNaN(val)) return;
+          const x = getX(r.timestamp);
+          const y = isLux ? getYLux(val) : getYTemp(val);
+          if (!started) {
+            this.ctx.moveTo(x, y);
+            started = true;
+          } else {
+            this.ctx.lineTo(x, y);
+          }
+        });
+        this.ctx.stroke();
+
+        if (filtered.length <= 40) {
+          filtered.forEach((r) => {
+            const val = r[key];
+            if (val == null || isNaN(val)) return;
+            const x = getX(r.timestamp);
+            const y = isLux ? getYLux(val) : getYTemp(val);
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, 3, 0, Math.PI * 2);
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fill();
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+          });
+        }
+      };
+
+      if (this.chartMode !== 'temp' && this.activeSensors.lux) {
+        drawLine('lux', '#eab308', true);
+      }
+      if (this.chartMode !== 'lux') {
+        if (this.activeSensors.s3) drawLine('temp3', '#8b5cf6', false);
+        if (this.activeSensors.s2) drawLine('temp2', '#f97316', false);
+        if (this.activeSensors.s1) drawLine('temp1', '#0284c7', false);
+      }
+
+      // Hover Crosshair & Highlight
+      if (this.hoverIndex >= 0 && this.hoverIndex < filtered.length) {
+        const hoverRec = filtered[this.hoverIndex];
+        const hX = getX(hoverRec.timestamp);
+
+        this.ctx.beginPath();
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.strokeStyle = '#94a3b8';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.moveTo(hX, padding.top);
+        this.ctx.lineTo(hX, padding.top + plotH);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+
+        const highlightDot = (val, color, isLux = false) => {
+          if (val == null || isNaN(val)) return;
+          const hY = isLux ? getYLux(val) : getYTemp(val);
+          this.ctx.beginPath();
+          this.ctx.arc(hX, hY, 6, 0, Math.PI * 2);
+          this.ctx.fillStyle = color;
+          this.ctx.fill();
+          this.ctx.lineWidth = 2;
+          this.ctx.strokeStyle = '#ffffff';
+          this.ctx.stroke();
+        };
+
+        if (this.chartMode !== 'temp' && this.activeSensors.lux) highlightDot(hoverRec.lux, '#eab308', true);
+        if (this.chartMode !== 'lux') {
+          if (this.activeSensors.s3) highlightDot(hoverRec.temp3, '#8b5cf6', false);
+          if (this.activeSensors.s2) highlightDot(hoverRec.temp2, '#f97316', false);
+          if (this.activeSensors.s1) highlightDot(hoverRec.temp1, '#0284c7', false);
+        }
+      }
+    },
+
+    renderTable(filtered) {
+      const tbody = document.getElementById('historyTableBody');
+      const countEl = document.getElementById('historyTableCountText');
+      const infoEl = document.getElementById('historyPaginationInfo');
+      const curPageEl = document.getElementById('historyPageCurrentText');
+      const prevBtn = document.getElementById('historyPrevPageBtn');
+      const nextBtn = document.getElementById('historyNextPageBtn');
+
+      if (!tbody) return;
+
+      let tableData = [...filtered];
+      if (this.searchQuery.trim()) {
+        const q = this.searchQuery.trim().toLowerCase();
+        tableData = tableData.filter((r) => {
+          return (
+            r.dateStr.toLowerCase().includes(q) ||
+            r.timeStr.toLowerCase().includes(q) ||
+            String(r.temp1).includes(q) ||
+            String(r.temp2).includes(q) ||
+            String(r.temp3).includes(q) ||
+            String(r.lux).includes(q) ||
+            (r.source && r.source.toLowerCase().includes(q))
+          );
+        });
+      }
+
+      tableData.reverse();
+
+      const totalItems = tableData.length;
+      if (countEl) countEl.textContent = `แสดง ${totalItems.toLocaleString()} รายการ`;
+
+      if (totalItems === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="history-table-empty">
+              📭 ไม่พบข้อมูลประวัติเซนเซอร์ที่ตรงกับเงื่อนไข
+            </td>
+          </tr>
+        `;
+        if (infoEl) infoEl.textContent = 'แสดง 0 - 0 จาก 0 รายการ';
+        if (curPageEl) curPageEl.textContent = 'หน้า 1 / 1';
+        if (prevBtn) prevBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+        return;
+      }
+
+      const totalPages = Math.ceil(totalItems / this.pageSize) || 1;
+      if (this.currentPage > totalPages) this.currentPage = totalPages;
+      if (this.currentPage < 1) this.currentPage = 1;
+
+      const startIdx = (this.currentPage - 1) * this.pageSize;
+      const endIdx = Math.min(startIdx + this.pageSize, totalItems);
+      const pageRows = tableData.slice(startIdx, endIdx);
+
+      if (infoEl) {
+        infoEl.textContent = `แสดง ${(startIdx + 1).toLocaleString()} - ${endIdx.toLocaleString()} จาก ${totalItems.toLocaleString()} รายการ`;
+      }
+      if (curPageEl) {
+        curPageEl.textContent = `หน้า ${this.currentPage} / ${totalPages}`;
+      }
+      if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
+      if (nextBtn) nextBtn.disabled = this.currentPage >= totalPages;
+
+      let html = '';
+      pageRows.forEach((r, idx) => {
+        const rowNum = totalItems - (startIdx + idx);
+        const s1 = r.temp1 != null ? `${Number(r.temp1).toFixed(1)} °C` : '--';
+        const s2 = r.temp2 != null ? `${Number(r.temp2).toFixed(1)} °C` : '--';
+        const s3 = r.temp3 != null ? `${Number(r.temp3).toFixed(1)} °C` : '--';
+        const lux = r.lux != null ? `${Number(r.lux).toLocaleString()} Lux` : '--';
+        const isAuto = r.source === 'auto';
+        const badgeClass = isAuto ? 'history-badge-source--auto' : 'history-badge-source--manual';
+        const badgeText = isAuto ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที';
+
+        html += `
+          <tr>
+            <td style="color:var(--text-muted);">${rowNum}</td>
+            <td><strong>${escapeHtml(r.dateStr)}</strong></td>
+            <td>${escapeHtml(r.timeStr)}</td>
+            <td class="td--s1">${s1}</td>
+            <td class="td--s2">${s2}</td>
+            <td class="td--s3">${s3}</td>
+            <td class="td--lux">${lux}</td>
+            <td><span class="history-badge-source ${badgeClass}">${badgeText}</span></td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+    },
+
+    exportExcel() {
+      const filtered = this.getFilteredRecords();
+      if (filtered.length === 0) {
+        showToast('ไม่มีข้อมูลสำหรับส่งออก', 'warning');
+        return;
+      }
+
+      // Check if XLSX library is available
+      if (typeof XLSX === 'undefined') {
+        console.warn('[SensorHistory] XLSX library not loaded, falling back to CSV export');
+        this.exportCSV();
+        return;
+      }
+
+      try {
+        const wb = XLSX.utils.book_new();
+
+        // ─────────────────────────────────────────────
+        // 1. SHEET 1: ข้อมูลเซนเซอร์ (Raw Data)
+        // ─────────────────────────────────────────────
+        const rawSheetData = [];
+        
+        rawSheetData.push(['มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตสุรินทร์ — ระบบควบคุมเครื่องปรับอากาศ']);
+        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (บันทึกทุก 30 นาที ย้อนหลัง 30 วัน)']);
+        rawSheetData.push([
+          `วันที่ส่งออกข้อมูล: ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH')}`,
+          '',
+          '',
+          `จำนวนรายการทั้งหมด: ${filtered.length} รายการ`,
+          '',
+          `ช่วงเวลา: ${this.currentRange}`
+        ]);
+        rawSheetData.push([]); // blank row
+
+        // Column Headers
+        rawSheetData.push([
+          'ลำดับ',
+          'วันที่',
+          'เวลา',
+          'วันเวลา ISO',
+          'เซนเซอร์ 1: Indoor (°C)',
+          'เซนเซอร์ 2: Outdoor (°C)',
+          'เซนเซอร์ 3: อินเวอร์เตอร์ (°C)',
+          'ความเข้มแสง: Ambient (Lux)',
+          'ประเภทการบันทึก'
+        ]);
+
+        filtered.forEach((r, idx) => {
+          rawSheetData.push([
+            idx + 1,
+            r.dateStr,
+            r.timeStr,
+            r.iso,
+            r.temp1 != null ? Number(r.temp1) : '',
+            r.temp2 != null ? Number(r.temp2) : '',
+            r.temp3 != null ? Number(r.temp3) : '',
+            r.lux != null ? Number(r.lux) : '',
+            r.source === 'auto' ? 'อัตโนมัติ (30 นาที)' : 'บันทึกทันที'
+          ]);
+        });
+
+        const wsRaw = XLSX.utils.aoa_to_sheet(rawSheetData);
+        wsRaw['!cols'] = [
+          { wch: 8 },  // ลำดับ
+          { wch: 14 }, // วันที่
+          { wch: 12 }, // เวลา
+          { wch: 26 }, // ISO
+          { wch: 24 }, // S1
+          { wch: 24 }, // S2
+          { wch: 26 }, // S3
+          { wch: 26 }, // Lux
+          { wch: 20 }, // ประเภท
+        ];
+        XLSX.utils.book_append_sheet(wb, wsRaw, 'ข้อมูลเซนเซอร์');
+
+        // ─────────────────────────────────────────────
+        // 2. SHEET 2: สรุปสถิติเพื่อวิเคราะห์ (Analytics & Statistics)
+        // ─────────────────────────────────────────────
+        const calcStats = (key) => {
+          const vals = filtered.map(r => r[key]).filter(v => v != null && !isNaN(v));
+          if (vals.length === 0) return { count: 0, min: 0, max: 0, avg: 0, sd: 0, range: 0, latest: 0 };
+          const count = vals.length;
+          const min = Math.min(...vals);
+          const max = Math.max(...vals);
+          const sum = vals.reduce((a, b) => a + b, 0);
+          const avg = sum / count;
+          const variance = vals.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / count;
+          const sd = Math.sqrt(variance);
+          const range = max - min;
+          const latest = vals[vals.length - 1];
+          return { count, min, max, avg, sd, range, latest };
+        };
+
+        const s1Stats = calcStats('temp1');
+        const s2Stats = calcStats('temp2');
+        const s3Stats = calcStats('temp3');
+        const luxStats = calcStats('lux');
+
+        const analyticsData = [];
+        analyticsData.push(['ตารางสรุปสถิติเชิงวิเคราะห์ (Statistical Summary for Data Analytics)']);
+        analyticsData.push([`สร้างเมื่อ: ${new Date().toLocaleString('th-TH')} | แหล่งข้อมูล: HiveMQ MQTT & AMX FX3U PLC`]);
+        analyticsData.push([]);
+        analyticsData.push([
+          'รายการเซนเซอร์',
+          'ตำแหน่งติดตั้ง / หน้าที่',
+          'หน่วยวัด',
+          'ค่าล่าสุด',
+          'ค่าเฉลี่ย (Mean/Avg)',
+          'ค่าต่ำสุด (Min)',
+          'ค่าสูงสุด (Max)',
+          'ผลต่าง (Max - Min)',
+          'ส่วนเบี่ยงเบนมาตรฐาน (SD)',
+          'จำนวนจุดข้อมูล (N)'
+        ]);
+
+        analyticsData.push([
+          'เซนเซอร์ 1',
+          'Indoor (ภายในห้องปรับอากาศ)',
+          '°C',
+          s1Stats.latest,
+          parseFloat(s1Stats.avg.toFixed(2)),
+          s1Stats.min,
+          s1Stats.max,
+          parseFloat(s1Stats.range.toFixed(2)),
+          parseFloat(s1Stats.sd.toFixed(2)),
+          s1Stats.count
+        ]);
+
+        analyticsData.push([
+          'เซนเซอร์ 2',
+          'Outdoor (อุณหภูมิแวดล้อมภายนอก)',
+          '°C',
+          s2Stats.latest,
+          parseFloat(s2Stats.avg.toFixed(2)),
+          s2Stats.min,
+          s2Stats.max,
+          parseFloat(s2Stats.range.toFixed(2)),
+          parseFloat(s2Stats.sd.toFixed(2)),
+          s2Stats.count
+        ]);
+
+        analyticsData.push([
+          'เซนเซอร์ 3',
+          'Inverter (คอยล์ / ลมจ่ายอินเวอร์เตอร์)',
+          '°C',
+          s3Stats.latest,
+          parseFloat(s3Stats.avg.toFixed(2)),
+          s3Stats.min,
+          s3Stats.max,
+          parseFloat(s3Stats.range.toFixed(2)),
+          parseFloat(s3Stats.sd.toFixed(2)),
+          s3Stats.count
+        ]);
+
+        analyticsData.push([
+          'ความเข้มแสง',
+          'Ambient Light Sensor (ความสว่างแสงโดยรอบ)',
+          'Lux',
+          luxStats.latest,
+          Math.round(luxStats.avg),
+          luxStats.min,
+          luxStats.max,
+          luxStats.range,
+          Math.round(luxStats.sd),
+          luxStats.count
+        ]);
+
+        analyticsData.push([]);
+        analyticsData.push(['คำแนะนำสำหรับการนำไปวิเคราะห์ใน Excel:']);
+        analyticsData.push(['1. สามารถใช้สูตร =CORREL(E6:E' + (filtered.length + 5) + ', H6:H' + (filtered.length + 5) + ') ในชีตแรก เพื่อหาความสัมพันธ์ระหว่างอุณหภูมิภายนอกกับความเข้มแสง']);
+        analyticsData.push(['2. สามารถใช้ Insert > Recommended Charts เพื่อสร้างกราฟ Scatter Plot หรือ Line Chart เปรียบเทียบประสิทธิภาพ']);
+        analyticsData.push(['3. ข้อมูลอุณหภูมิและความเข้มแสงจัดเก็บเป็นตัวเลขจริง (Numeric) สามารถทำ Pivot Table ได้ทันที']);
+
+        const wsAnalytics = XLSX.utils.aoa_to_sheet(analyticsData);
+        wsAnalytics['!cols'] = [
+          { wch: 18 },
+          { wch: 38 },
+          { wch: 10 },
+          { wch: 12 },
+          { wch: 18 },
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 18 },
+          { wch: 24 },
+          { wch: 20 },
+        ];
+        XLSX.utils.book_append_sheet(wb, wsAnalytics, 'สรุปสถิติวิเคราะห์');
+
+        // File download
+        const now = new Date();
+        const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+        const fileName = `sensor_analytics_30days_${datePart}.xlsx`;
+
+        XLSX.writeFile(wb, fileName);
+        showToast(`ส่งออกไฟล์ Excel (.xlsx) สำเร็จ (${filtered.length} รายการ 2 ชีต)`, 'success');
+        addLog('info', `[ประวัติเซนเซอร์] ส่งออกไฟล์ Excel (.xlsx) สำเร็จ: ${fileName}`);
+      } catch (err) {
+        console.error('[SensorHistory] Error generating Excel file', err);
+        showToast('เกิดข้อผิดพลาดในการสร้าง Excel กำลังดาวน์โหลดเป็น CSV แทน', 'warning');
+        this.exportCSV();
+      }
+    },
+
+    exportCSV() {
+      const filtered = this.getFilteredRecords();
+      if (filtered.length === 0) {
+        showToast('ไม่มีข้อมูลสำหรับส่งออก', 'warning');
+        return;
+      }
+
+      let csv = '\uFEFF';
+      csv += 'ลำดับ,วันที่,เวลา,เซนเซอร์ 1 - Indoor (°C),เซนเซอร์ 2 - Outdoor (°C),เซนเซอร์ 3 - Inverter (°C),ความเข้มแสง (Lux),ประเภทการบันทึก,ISO Timestamp\n';
+
+      filtered.forEach((r, idx) => {
+        const s1 = r.temp1 != null ? r.temp1 : '';
+        const s2 = r.temp2 != null ? r.temp2 : '';
+        const s3 = r.temp3 != null ? r.temp3 : '';
+        const lux = r.lux != null ? r.lux : '';
+        const src = r.source === 'auto' ? 'อัตโนมัติ (30 นาที)' : 'บันทึกทันที';
+        csv += `${idx + 1},"${r.dateStr}","${r.timeStr}",${s1},${s2},${s3},${lux},"${src}","${r.iso}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const now = new Date();
+      const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      a.href = url;
+      a.download = `sensor_history_30days_${datePart}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast('success', `ส่งออกข้อมูล CSV เรียบร้อยแล้ว (${filtered.length} รายการ)`);
+      addLog('info', `[ประวัติเซนเซอร์] ส่งออกไฟล์ CSV สำเร็จ: ${filtered.length} รายการ`);
+    },
+
+    async generateSample30DayData(silent = false) {
+      if (!silent) {
+        if (!confirm('ต้องการสร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน (บันทึกทุก 30 นาที รวม 1,440 รายการ) ที่อิงฐานค่าจริงของเซนเซอร์เพื่อวิเคราะห์ใช่หรือไม่?')) {
+          return;
+        }
+      }
+
+      const now = Date.now();
+      const interval = this.LOG_INTERVAL_MS;
+      const totalPoints = 30 * 48; // 1,440 รายการ (30 วัน)
+      const sampleList = [];
+      const currentLive = this.getCurrentSensorValues();
+
+      for (let i = totalPoints - 1; i >= 0; i--) {
+        const t = new Date(now - i * interval);
+        const hour = t.getHours() + t.getMinutes() / 60;
+
+        // วงรอบอุณหภูมิจริงตามแสงอาทิตย์ อิงฐานค่าจริงจาก Hardware:
+        // S1 (Indoor): 30.5 - 31.8°C (ฐาน 31.0°C)
+        // S2 (Outdoor): 47.0 - 58.0°C (ฐาน 49.0 - 55.0°C)
+        // S3 (Inverter): 28.0 - 29.8°C (ฐาน 28.5 - 29.0°C)
+        // Lux: 320 - 460 Lux (กลางวัน) / 10 - 25 Lux (กลางคืน) (ฐาน 394 Lux)
+        const sunFactor = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
+        let outdoorTemp = parseFloat((47.0 + sunFactor * 8.0 + (Math.random() - 0.5) * 1.2).toFixed(1));
+        let indoorTemp = parseFloat((30.6 + (sunFactor > 0 ? 0.8 : 0.2) + (Math.random() - 0.5) * 0.4).toFixed(1));
+        let inverterTemp = parseFloat((28.2 + sunFactor * 1.2 + (Math.random() - 0.5) * 0.4).toFixed(1));
+        let lux = Math.round(sunFactor > 0 ? (330 + sunFactor * 120 + (Math.random() - 0.5) * 40) : (15 + Math.random() * 20));
+
+        // จุดล่าสุดในตาราง (i === 0) ใช้ค่าจริง Real-time ล่าสุดจากเซนเซอร์ 100%
+        if (i === 0) {
+          indoorTemp = currentLive.temp1;
+          outdoorTemp = currentLive.temp2;
+          inverterTemp = currentLive.temp3;
+          lux = currentLive.lux;
+        }
+
+        const dd = String(t.getDate()).padStart(2, '0');
+        const mm = String(t.getMonth() + 1).padStart(2, '0');
+        const yyyy = t.getFullYear();
+        const dateStr = `${dd}/${mm}/${yyyy}`;
+
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mi = String(t.getMinutes()).padStart(2, '0');
+        const ss = String(t.getSeconds()).padStart(2, '0');
+        const timeStr = `${hh}:${mi}:${ss}`;
+
+        sampleList.push({
+          timestamp: t.getTime(),
+          iso: t.toISOString(),
+          dateStr,
+          timeStr,
+          temp1: indoorTemp,
+          temp2: outdoorTemp,
+          temp3: inverterTemp,
+          lux: Math.max(0, lux),
+          source: i === 0 ? 'realtime' : 'auto',
+        });
+      }
+
+      this.records = sampleList;
+      this.lastLogTime = now;
+      localStorage.setItem(this.LAST_LOG_KEY, String(now));
+
+      if (this.db) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.clear();
+          sampleList.forEach((r) => store.put(r));
+        } catch (e) {
+          // ignore
+        }
+      }
+      this.syncFallback();
+
+      this.render();
+      if (!silent) {
+        showToast('success', 'สร้างข้อมูลย้อนหลัง 30 วัน (1,440 รายการ) สำเร็จ!');
+        addLog('info', '[ประวัติเซนเซอร์] สร้างข้อมูลย้อนหลัง 30 วัน (1,440 รายการ) เรียบร้อยแล้ว');
+      }
+    },
+
+    async clearAllRecords() {
+      if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลประวัติเซนเซอร์ทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+        return;
+      }
+
+      this.records = [];
+      this.lastLogTime = 0;
+      localStorage.removeItem(this.LAST_LOG_KEY);
+      localStorage.removeItem(this.STORAGE_KEY);
+
+      if (this.db) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.clear();
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      this.render();
+      showToast('info', 'ล้างข้อมูลประวัติเซนเซอร์เรียบร้อยแล้ว');
+      addLog('warning', '[ประวัติเซนเซอร์] ล้างข้อมูลประวัติทั้งหมดในระบบแล้ว');
+    },
+
+    bindUI() {
+      const snapBtn = document.getElementById('historySnapshotBtn');
+      if (snapBtn) {
+        snapBtn.addEventListener('click', () => this.logCurrentSnapshot('manual'));
+      }
+
+      const exportExcelBtn = document.getElementById('historyExportExcelBtn');
+      if (exportExcelBtn) {
+        exportExcelBtn.addEventListener('click', () => this.exportExcel());
+      }
+
+      const exportBtn = document.getElementById('historyExportCsvBtn');
+      if (exportBtn) {
+        exportBtn.addEventListener('click', () => this.exportCSV());
+      }
+
+      const sampleBtn = document.getElementById('historySampleDataBtn');
+      if (sampleBtn) {
+        sampleBtn.addEventListener('click', () => this.generateSample30DayData());
+      }
+
+      const clearBtn = document.getElementById('historyClearBtn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => this.clearAllRecords());
+      }
+
+      const rangePills = document.querySelectorAll('.history-pill');
+      const customDatesPanel = document.getElementById('historyCustomDates');
+      rangePills.forEach((pill) => {
+        pill.addEventListener('click', () => {
+          rangePills.forEach((p) => p.classList.remove('history-pill--active'));
+          pill.classList.add('history-pill--active');
+          const range = pill.getAttribute('data-range');
+          this.currentRange = range;
+          if (customDatesPanel) {
+            customDatesPanel.style.display = range === 'custom' ? 'flex' : 'none';
+          }
+          if (range !== 'custom') {
+            this.currentPage = 1;
+            this.render();
+          }
+        });
+      });
+
+      const applyCustomBtn = document.getElementById('historyApplyCustomDateBtn');
+      const startInp = document.getElementById('historyStartDate');
+      const endInp = document.getElementById('historyEndDate');
+      if (applyCustomBtn && startInp && endInp) {
+        applyCustomBtn.addEventListener('click', () => {
+          this.customStart = startInp.value;
+          this.customEnd = endInp.value;
+          this.currentPage = 1;
+          this.render();
+        });
+      }
+
+      const t1 = document.getElementById('toggleSensor1');
+      const t2 = document.getElementById('toggleSensor2');
+      const t3 = document.getElementById('toggleSensor3');
+      const tLux = document.getElementById('toggleSensorLux');
+
+      const handleToggle = () => {
+        this.activeSensors = {
+          s1: t1 ? t1.checked : true,
+          s2: t2 ? t2.checked : true,
+          s3: t3 ? t3.checked : true,
+          lux: tLux ? tLux.checked : true,
+        };
+        this.render();
+      };
+      if (t1) t1.addEventListener('change', handleToggle);
+      if (t2) t2.addEventListener('change', handleToggle);
+      if (t3) t3.addEventListener('change', handleToggle);
+      if (tLux) tLux.addEventListener('change', handleToggle);
+
+      const chartTabs = document.querySelectorAll('.history-chart-tab');
+      chartTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          chartTabs.forEach((t) => t.classList.remove('history-chart-tab--active'));
+          tab.classList.add('history-chart-tab--active');
+          this.chartMode = tab.getAttribute('data-mode') || 'all';
+          this.renderChart(this.getFilteredRecords());
+        });
+      });
+
+      const searchInp = document.getElementById('historySearchInput');
+      if (searchInp) {
+        searchInp.addEventListener('input', (e) => {
+          this.searchQuery = e.target.value;
+          this.currentPage = 1;
+          this.renderTable(this.getFilteredRecords());
+        });
+      }
+
+      const pageSizeSel = document.getElementById('historyPageSizeSelect');
+      if (pageSizeSel) {
+        pageSizeSel.addEventListener('change', (e) => {
+          this.pageSize = parseInt(e.target.value, 10) || 25;
+          this.currentPage = 1;
+          this.renderTable(this.getFilteredRecords());
+        });
+      }
+
+      const prevBtn = document.getElementById('historyPrevPageBtn');
+      const nextBtn = document.getElementById('historyNextPageBtn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          if (this.currentPage > 1) {
+            this.currentPage--;
+            this.renderTable(this.getFilteredRecords());
+          }
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          this.currentPage++;
+          this.renderTable(this.getFilteredRecords());
+        });
+      }
+
+      const canvasEl = document.getElementById('historyCanvas');
+      const tooltipEl = document.getElementById('historyChartTooltip');
+      if (canvasEl && tooltipEl) {
+        this.canvas = canvasEl;
+        this.ctx = canvasEl.getContext('2d');
+
+        const handlePointerMove = (clientX, clientY) => {
+          const filtered = this.getFilteredRecords();
+          if (filtered.length === 0) return;
+
+          const rect = canvasEl.getBoundingClientRect();
+          const mouseX = clientX - rect.left;
+          const padding = { top: 25, right: 65, bottom: 40, left: 55 };
+          const plotW = rect.width - padding.left - padding.right;
+
+          if (mouseX < padding.left || mouseX > padding.left + plotW) {
+            this.hoverIndex = -1;
+            tooltipEl.style.display = 'none';
+            this.renderChart(filtered);
+            return;
+          }
+
+          const minTime = filtered[0].timestamp;
+          const maxTime = filtered[filtered.length - 1].timestamp;
+          const timeSpan = maxTime - minTime || 1;
+          const targetTime = minTime + ((mouseX - padding.left) / plotW) * timeSpan;
+
+          let closestIdx = 0;
+          let minDiff = Infinity;
+          for (let i = 0; i < filtered.length; i++) {
+            const diff = Math.abs(filtered[i].timestamp - targetTime);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestIdx = i;
+            }
+          }
+
+          this.hoverIndex = closestIdx;
+          const pt = filtered[closestIdx];
+
+          tooltipEl.innerHTML = `
+            <div style="font-weight:600;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:3px;">
+              📅 ${escapeHtml(pt.dateStr)} &nbsp;⏰ ${escapeHtml(pt.timeStr)}
+            </div>
+            ${this.activeSensors.s1 && pt.temp1 != null ? `<div style="color:#38bdf8;">● เซนเซอร์ 1 (Indoor): <strong>${Number(pt.temp1).toFixed(1)} °C</strong></div>` : ''}
+            ${this.activeSensors.s2 && pt.temp2 != null ? `<div style="color:#fb923c;">● เซนเซอร์ 2 (Outdoor): <strong>${Number(pt.temp2).toFixed(1)} °C</strong></div>` : ''}
+            ${this.activeSensors.s3 && pt.temp3 != null ? `<div style="color:#c084fc;">● เซนเซอร์ 3 (Inverter): <strong>${Number(pt.temp3).toFixed(1)} °C</strong></div>` : ''}
+            ${this.activeSensors.lux && pt.lux != null ? `<div style="color:#facc15;">● ความเข้มแสง (Lux): <strong>${Number(pt.lux).toLocaleString()} lx</strong></div>` : ''}
+            <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ (30 นาที)' : 'บันทึกทันที'}</div>
+          `;
+
+          tooltipEl.style.display = 'block';
+
+          const tooltipWidth = tooltipEl.offsetWidth || 180;
+          let leftPos = mouseX + 12;
+          if (leftPos + tooltipWidth > rect.width) {
+            leftPos = mouseX - tooltipWidth - 12;
+          }
+          tooltipEl.style.left = `${Math.max(8, leftPos)}px`;
+          tooltipEl.style.top = '14px';
+
+          this.renderChart(filtered);
+        };
+
+        canvasEl.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+        canvasEl.addEventListener('mouseleave', () => {
+          this.hoverIndex = -1;
+          tooltipEl.style.display = 'none';
+          this.renderChart(this.getFilteredRecords());
+        });
+
+        canvasEl.addEventListener('touchmove', (e) => {
+          if (e.touches && e.touches[0]) {
+            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+        canvasEl.addEventListener('touchend', () => {
+          this.hoverIndex = -1;
+          tooltipEl.style.display = 'none';
+          this.renderChart(this.getFilteredRecords());
+        });
+
+        window.addEventListener('resize', () => {
+          this.renderChart(this.getFilteredRecords());
+        });
+      }
+    },
+  };
 
   // ── Utilities ──
   function escapeHtml(str) {

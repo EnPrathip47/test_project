@@ -3243,6 +3243,13 @@
     tickerTimer: null,
     canvas: null,
     ctx: null,
+    liveSamples: {
+      temp1: [],
+      temp2: [],
+      temp3: [],
+      lux: [],
+      maxSamples: 2000,
+    },
 
     async init() {
       const savedLast = localStorage.getItem(this.LAST_LOG_KEY);
@@ -3252,6 +3259,13 @@
       await this.loadRecords();
       await this.pruneExpiredRecords();
       await this.sanitizeDummyRecords();
+
+      if (this.records.length === 0) {
+        this.lastLogTime = 0;
+        try { localStorage.setItem(this.LAST_LOG_KEY, '0'); } catch (e) {}
+      } else {
+        this.lastLogTime = Math.max(this.lastLogTime, this.records[this.records.length - 1].timestamp);
+      }
 
       this.bindUI();
       this.startTicker();
@@ -3418,11 +3432,12 @@
     async sanitizeDummyRecords() {
       if (!this.records || this.records.length === 0) return;
 
-      // กรองเฉพาะข้อมูล mock ดั้งเดิมที่เป็นตัวเลขจำลองตายตัว (เช่น 31/49/29/394 หรือ 25/28.5/16)
+      // กรองเฉพาะข้อมูล mock ดั้งเดิมที่เป็นตัวเลขจำลองตายตัว หรือชุด sample mock เดิมที่ outdoor สูงผิดปกติ (45-60°C)
       const isLegacyMockPlaceholder = (r) => {
         if (!r) return true;
         if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
         if (r.temp1 === 31.0 && r.temp2 === 49.0 && r.temp3 === 29.0 && r.lux === 394 && r.source !== 'manual') return true;
+        if (r.source === 'sample' && r.temp2 >= 45.0 && r.temp1 <= 33.0) return true;
         return false;
       };
 
@@ -3510,6 +3525,25 @@
 
     onTelemetry() {
       // Telemetry จริงเข้ามาจาก ESP32 / PLC
+      const vals = this.getCurrentSensorValues();
+      const now = Date.now();
+      if (vals.temp1 != null || vals.temp2 != null || vals.temp3 != null || vals.lux != null) {
+        ['temp1', 'temp2', 'temp3', 'lux'].forEach((key) => {
+          const v = vals[key];
+          if (v != null && !isNaN(v)) {
+            if (!this.liveSamples) {
+              this.liveSamples = { temp1: [], temp2: [], temp3: [], lux: [], maxSamples: 2000 };
+            }
+            if (!this.liveSamples[key]) this.liveSamples[key] = [];
+            this.liveSamples[key].push({ t: now, v: Number(v) });
+            const maxS = this.liveSamples.maxSamples || 2000;
+            if (this.liveSamples[key].length > maxS) {
+              this.liveSamples[key].shift();
+            }
+          }
+        });
+      }
+
       this.checkAndAutoLog(false);
       this.updateCountdownUI();
       this.renderStats(this.getFilteredRecords());
@@ -3576,6 +3610,7 @@
     onRemoteClearReceived() {
       this.records = [];
       this.lastLogTime = 0;
+      this.liveSamples = { temp1: [], temp2: [], temp3: [], lux: [], maxSamples: 2000 };
       try {
         localStorage.setItem(this.LAST_LOG_KEY, '0');
         localStorage.removeItem(this.STORAGE_KEY);
@@ -3675,32 +3710,36 @@
       }
     },
 
-    getFilteredRecords() {
+    isTimestampInCurrentRange(ts) {
+      if (!ts || isNaN(ts)) return false;
       const now = Date.now();
-      let filtered = [...this.records];
-
       if (this.currentRange === 'today') {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
-        filtered = filtered.filter((r) => r.timestamp >= startOfToday.getTime());
+        return ts >= startOfToday.getTime();
       } else if (this.currentRange === '24h') {
-        filtered = filtered.filter((r) => r.timestamp >= now - 24 * 3600 * 1000);
+        return ts >= now - 24 * 3600 * 1000;
       } else if (this.currentRange === '7d') {
-        filtered = filtered.filter((r) => r.timestamp >= now - 7 * 86400 * 1000);
+        return ts >= now - 7 * 86400 * 1000;
       } else if (this.currentRange === '30d') {
-        filtered = filtered.filter((r) => r.timestamp >= now - 30 * 86400 * 1000);
+        return ts >= now - 30 * 86400 * 1000;
       } else if (this.currentRange === 'custom') {
+        let valid = true;
         if (this.customStart) {
           const s = new Date(this.customStart + 'T00:00:00').getTime();
-          filtered = filtered.filter((r) => r.timestamp >= s);
+          valid = valid && (ts >= s);
         }
         if (this.customEnd) {
           const e = new Date(this.customEnd + 'T23:59:59').getTime();
-          filtered = filtered.filter((r) => r.timestamp <= e);
+          valid = valid && (ts <= e);
         }
+        return valid;
       }
+      return true;
+    },
 
-      return filtered;
+    getFilteredRecords() {
+      return this.records.filter((r) => this.isTimestampInCurrentRange(r.timestamp));
     },
 
     render() {
@@ -3714,20 +3753,62 @@
     renderStats(filtered) {
       const live = this.getCurrentSensorValues();
       const calcMetrics = (arr, key, liveVal) => {
-        const vals = arr.map((r) => r[key]).filter((v) => v != null && !isNaN(v));
-        if (vals.length === 0) {
-          return {
-            cur: liveVal != null ? liveVal : '--',
-            min: liveVal != null ? liveVal : '--',
-            max: liveVal != null ? liveVal : '--',
-            avg: liveVal != null ? liveVal : '--',
-          };
+        // 1. ค่าจากประวัติสแนปช็อตย้อนหลัง (Snapshot Records)
+        const histVals = arr
+          .map((r) => r[key])
+          .filter((v) => v != null && !isNaN(v))
+          .map(Number);
+
+        // 2. ค่าตัวอย่างแบบ Live Telemetry สตรีมมิ่งในเซสชันปัจจุบันที่อยู่ในช่วงเวลาที่เลือก
+        const liveList = (this.liveSamples && this.liveSamples[key]) ? this.liveSamples[key] : [];
+        const activeLiveVals = liveList
+          .filter((s) => this.isTimestampInCurrentRange(s.t))
+          .map((s) => s.v);
+
+        // หากมี liveVal ปัจจุบันจาก MQTT
+        if (liveVal != null && !isNaN(liveVal)) {
+          if (activeLiveVals.length === 0) {
+            activeLiveVals.push(Number(liveVal));
+          }
         }
-        const min = Math.min(...vals);
-        const max = Math.max(...vals);
-        const sum = vals.reduce((a, b) => a + b, 0);
-        const avg = sum / vals.length;
-        const cur = liveVal != null ? liveVal : (arr.length > 0 ? arr[arr.length - 1][key] : '--');
+
+        // ค่าปัจจุบันที่จะแสดงผล
+        const cur = (liveVal != null && !isNaN(liveVal))
+          ? Number(liveVal)
+          : (activeLiveVals.length > 0
+              ? activeLiveVals[activeLiveVals.length - 1]
+              : (histVals.length > 0 ? histVals[histVals.length - 1] : '--'));
+
+        // รวมค่าทั้งหมดเพื่อหา Min และ Max
+        const allPool = [...histVals, ...activeLiveVals];
+        if (liveVal != null && !isNaN(liveVal) && !allPool.includes(Number(liveVal))) {
+          allPool.push(Number(liveVal));
+        }
+
+        if (allPool.length === 0) {
+          return { cur, min: '--', max: '--', avg: '--' };
+        }
+
+        const min = Math.min(...allPool);
+        const max = Math.max(...allPool);
+
+        // 3. คำนวณค่าเฉลี่ยแบบ Dynamic & Reactive:
+        // นำทั้งประวัติสแนปช็อต (30 นาที) และข้อมูล Live Telemetry สตรีมมิ่งสดมาร่วมเฉลี่ยอย่างสมดุล
+        let avg;
+        if (histVals.length > 0) {
+          const liveSum = activeLiveVals.reduce((a, b) => a + b, 0);
+          const currentSessionAvg = activeLiveVals.length > 0 ? (liveSum / activeLiveVals.length) : null;
+          const histSum = histVals.reduce((a, b) => a + b, 0);
+          if (currentSessionAvg != null) {
+            avg = (histSum + currentSessionAvg) / (histVals.length + 1);
+          } else {
+            avg = histSum / histVals.length;
+          }
+        } else {
+          const sum = activeLiveVals.reduce((a, b) => a + b, 0);
+          avg = activeLiveVals.length > 0 ? (sum / activeLiveVals.length) : (liveVal != null ? Number(liveVal) : '--');
+        }
+
         return { cur, min, max, avg };
       };
 
@@ -3744,7 +3825,10 @@
       if (curS1) curS1.textContent = typeof mS1.cur === 'number' ? mS1.cur.toFixed(1) : mS1.cur;
       if (minS1) minS1.textContent = typeof mS1.min === 'number' ? `${mS1.min.toFixed(1)} °C` : '--.- °C';
       if (maxS1) maxS1.textContent = typeof mS1.max === 'number' ? `${mS1.max.toFixed(1)} °C` : '--.- °C';
-      if (avgS1) avgS1.textContent = typeof mS1.avg === 'number' ? `${mS1.avg.toFixed(1)} °C` : '--.- °C';
+      if (avgS1) {
+        avgS1.textContent = typeof mS1.avg === 'number' ? `${mS1.avg.toFixed(1)} °C` : '--.- °C';
+        if (typeof mS1.avg === 'number') avgS1.title = `ค่าเฉลี่ยเซนเซอร์ 1: ${mS1.avg.toFixed(2)} °C (อัปเดตสดตามฮาร์ดแวร์)`;
+      }
 
       // S2
       const curS2 = document.getElementById('statCurS2');
@@ -3754,7 +3838,10 @@
       if (curS2) curS2.textContent = typeof mS2.cur === 'number' ? mS2.cur.toFixed(1) : mS2.cur;
       if (minS2) minS2.textContent = typeof mS2.min === 'number' ? `${mS2.min.toFixed(1)} °C` : '--.- °C';
       if (maxS2) maxS2.textContent = typeof mS2.max === 'number' ? `${mS2.max.toFixed(1)} °C` : '--.- °C';
-      if (avgS2) avgS2.textContent = typeof mS2.avg === 'number' ? `${mS2.avg.toFixed(1)} °C` : '--.- °C';
+      if (avgS2) {
+        avgS2.textContent = typeof mS2.avg === 'number' ? `${mS2.avg.toFixed(1)} °C` : '--.- °C';
+        if (typeof mS2.avg === 'number') avgS2.title = `ค่าเฉลี่ยเซนเซอร์ 2: ${mS2.avg.toFixed(2)} °C (อัปเดตสดตามฮาร์ดแวร์)`;
+      }
 
       // S3
       const curS3 = document.getElementById('statCurS3');
@@ -3764,7 +3851,10 @@
       if (curS3) curS3.textContent = typeof mS3.cur === 'number' ? mS3.cur.toFixed(1) : mS3.cur;
       if (minS3) minS3.textContent = typeof mS3.min === 'number' ? `${mS3.min.toFixed(1)} °C` : '--.- °C';
       if (maxS3) maxS3.textContent = typeof mS3.max === 'number' ? `${mS3.max.toFixed(1)} °C` : '--.- °C';
-      if (avgS3) avgS3.textContent = typeof mS3.avg === 'number' ? `${mS3.avg.toFixed(1)} °C` : '--.- °C';
+      if (avgS3) {
+        avgS3.textContent = typeof mS3.avg === 'number' ? `${mS3.avg.toFixed(1)} °C` : '--.- °C';
+        if (typeof mS3.avg === 'number') avgS3.title = `ค่าเฉลี่ยเซนเซอร์ 3: ${mS3.avg.toFixed(2)} °C (อัปเดตสดตามฮาร์ดแวร์)`;
+      }
 
       // Lux
       const curLux = document.getElementById('statCurLux');
@@ -3774,7 +3864,10 @@
       if (curLux) curLux.textContent = typeof mLux.cur === 'number' ? mLux.cur.toLocaleString() : mLux.cur;
       if (minLux) minLux.textContent = typeof mLux.min === 'number' ? `${mLux.min.toLocaleString()} Lux` : '-- Lux';
       if (maxLux) maxLux.textContent = typeof mLux.max === 'number' ? `${mLux.max.toLocaleString()} Lux` : '-- Lux';
-      if (avgLux) avgLux.textContent = typeof mLux.avg === 'number' ? `${Math.round(mLux.avg).toLocaleString()} Lux` : '-- Lux';
+      if (avgLux) {
+        avgLux.textContent = typeof mLux.avg === 'number' ? `${Math.round(mLux.avg).toLocaleString()} Lux` : '-- Lux';
+        if (typeof mLux.avg === 'number') avgLux.title = `ค่าเฉลี่ยความเข้มแสง: ${mLux.avg.toFixed(1)} Lux (อัปเดตสดตามฮาร์ดแวร์)`;
+      }
     },
 
     renderChart(filtered) {
@@ -4338,21 +4431,21 @@
       const totalPoints = 30 * 48; // 1,440 รายการ (30 วัน)
       const sampleList = [];
       const currentLive = this.getCurrentSensorValues();
+      const baseIndoor = (currentLive.temp1 != null && !isNaN(currentLive.temp1)) ? currentLive.temp1 : 28.5;
+      const baseOutdoor = (currentLive.temp2 != null && !isNaN(currentLive.temp2)) ? currentLive.temp2 : 31.0;
+      const baseInverter = (currentLive.temp3 != null && !isNaN(currentLive.temp3)) ? currentLive.temp3 : 26.5;
+      const baseLux = (currentLive.lux != null && !isNaN(currentLive.lux)) ? currentLive.lux : 1500;
 
       for (let i = totalPoints - 1; i >= 0; i--) {
         const t = new Date(now - i * interval);
         const hour = t.getHours() + t.getMinutes() / 60;
 
-        // วงรอบอุณหภูมิจริงตามแสงอาทิตย์ อิงฐานค่าจริงจาก Hardware:
-        // S1 (Indoor): 30.5 - 31.8°C (ฐาน 31.0°C)
-        // S2 (Outdoor): 47.0 - 58.0°C (ฐาน 49.0 - 55.0°C)
-        // S3 (Inverter): 28.0 - 29.8°C (ฐาน 28.5 - 29.0°C)
-        // Lux: 320 - 460 Lux (กลางวัน) / 10 - 25 Lux (กลางคืน) (ฐาน 394 Lux)
+        // วงรอบอุณหภูมิตามแสงอาทิตย์ อิงฐานค่าจริงจากเซนเซอร์ Real-time
         const sunFactor = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
-        let outdoorTemp = parseFloat((47.0 + sunFactor * 8.0 + (Math.random() - 0.5) * 1.2).toFixed(1));
-        let indoorTemp = parseFloat((30.6 + (sunFactor > 0 ? 0.8 : 0.2) + (Math.random() - 0.5) * 0.4).toFixed(1));
-        let inverterTemp = parseFloat((28.2 + sunFactor * 1.2 + (Math.random() - 0.5) * 0.4).toFixed(1));
-        let lux = Math.round(sunFactor > 0 ? (330 + sunFactor * 120 + (Math.random() - 0.5) * 40) : (15 + Math.random() * 20));
+        let outdoorTemp = parseFloat((baseOutdoor - 2.0 + sunFactor * 4.0 + (Math.random() - 0.5) * 0.8).toFixed(1));
+        let indoorTemp = parseFloat((baseIndoor - 0.5 + (sunFactor > 0 ? 0.8 : 0.2) + (Math.random() - 0.5) * 0.4).toFixed(1));
+        let inverterTemp = parseFloat((baseInverter - 0.5 + sunFactor * 1.0 + (Math.random() - 0.5) * 0.4).toFixed(1));
+        let lux = Math.round(sunFactor > 0 ? (baseLux * 0.4 + sunFactor * baseLux * 0.8 + (Math.random() - 0.5) * 50) : (15 + Math.random() * 20));
 
         // จุดล่าสุดในตาราง (i === 0) ใช้ค่าจริง Real-time ล่าสุดจากเซนเซอร์ 100%
         if (i === 0) {
@@ -4416,6 +4509,7 @@
 
       this.records = [];
       this.lastLogTime = 0;
+      this.liveSamples = { temp1: [], temp2: [], temp3: [], lux: [], maxSamples: 2000 };
       try {
         localStorage.setItem(this.LAST_LOG_KEY, '0');
         localStorage.removeItem(this.STORAGE_KEY);

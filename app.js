@@ -19,6 +19,8 @@
     topicStatus: "aircon/status",         // หัวข้อ MQTT รับสถานะจาก ESP32 → เว็บ
     topicAvailability: "aircon/availability", // หัวข้อ MQTT Heartbeat Online/Offline
     topicSync: "aircon/sync",             // หัวข้อ MQTT สำหรับ Real-time Cross-Device Sync และ Presence
+    topicHistorySync: "aircon/history/sync", // หัวข้อ MQTT ซิงค์ประวัติเซนเซอร์ข้ามเครื่อง (Retained Message)
+    topicSettingsSync: "aircon/settings/sync", // หัวข้อ MQTT ซิงค์การตั้งค่าระบบข้ามเครื่อง (Retained Message)
     reconnectDelay: 3000,
     maxReconnectAttempts: 10,
     demoUpdateInterval: 2000,
@@ -253,6 +255,8 @@
     // Badges & Online Users
     activeUsersCountText: document.getElementById('activeUsersCountText'),
     activeUsersStatus: document.getElementById('activeUsersStatus'),
+    historyCloudSyncBadge: document.getElementById('historyCloudSyncBadge'),
+    historyCloudSyncText: document.getElementById('historyCloudSyncText'),
 
     // Temp Buttons
     tempMinusBtn: document.getElementById('tempMinusBtn'),
@@ -353,21 +357,19 @@
   }
 
   function initSensors() {
-    // ค่าจริงจาก Hardware เซนเซอร์ (ESP32-S3 + Mitsubishi FX3U PLC + TSL2591 Light Sensor)
-    // S1 (Indoor): 31.0°C | S2 (Outdoor): 49.0°C | S3 (Inverter): 29.0°C | Lux: 394 Lux
-    const defaultTemps = [31.0, 49.0, 29.0];
+    // กำหนดค่าเริ่มต้นสำหรับ UI วงแหวน (SVG Progress Ring)
+    // ไม่ฮาร์ดโค้ดค่าเซนเซอร์จำลอง — รอรับค่าจริงจาก ESP32 / PLC ผ่าน MQTT aircon/status เท่านั้น
     for (let i = 1; i <= SENSOR_COUNT; i++) {
       const progressEl = DOM[`sensorProgress${i}`];
       if (progressEl) {
         progressEl.style.strokeDasharray = String(SENSOR_RING_CIRCUMFERENCE);
+        progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE);
       }
-      updateSensor(i, defaultTemps[i - 1]);
     }
     if (DOM.sensorProgressLux) {
       DOM.sensorProgressLux.style.strokeDasharray = String(SENSOR_RING_CIRCUMFERENCE);
+      DOM.sensorProgressLux.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE);
     }
-    updateLuxSensor(394);
-    updateTempBadge();
   }
 
   // ── Date & Time Helper Utilities ──
@@ -995,9 +997,11 @@
     }
   }
 
-  function saveSettings() {
+  function saveSettings(broadcastCloud = true) {
     try {
       const settings = {
+        senderId: state.clientId,
+        updatedAt: Date.now(),
         targetTemp: state.targetTemp,
         scheduleMode: state.scheduleMode,
         scheduleEnabled: state.schedule.enabled,
@@ -1012,9 +1016,71 @@
         acFan: state.acFan
       };
       localStorage.setItem('airCandySettings', JSON.stringify(settings));
+
+      if (broadcastCloud && state.mqttClient && state.mqttClient.connected) {
+        try {
+          state.mqttClient.publish(CONFIG.topicSettingsSync, JSON.stringify(settings), { qos: 1, retain: true });
+        } catch (e) { }
+      }
     } catch (e) {
       console.warn('Failed to save settings:', e);
     }
+  }
+
+  function applyRemoteSettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    if (settings.senderId === state.clientId) return;
+
+    if (settings.scheduleMode && ['none', 'auto', 'manual'].includes(settings.scheduleMode)) {
+      if (state.scheduleMode !== settings.scheduleMode) {
+        state.scheduleMode = settings.scheduleMode;
+        applyScheduleMode(settings.scheduleMode);
+      }
+    }
+
+    if (settings.scheduleEnabled !== undefined) {
+      state.schedule.enabled = Boolean(settings.scheduleEnabled);
+    }
+
+    if (settings.onDate !== undefined) {
+      state.schedule.onDate = settings.onDate;
+      if (DOM.onDate && document.activeElement !== DOM.onDate) DOM.onDate.value = settings.onDate;
+    }
+    if (settings.onTime !== undefined) {
+      state.schedule.onTime = settings.onTime;
+      if (DOM.onTime && document.activeElement !== DOM.onTime) DOM.onTime.value = settings.onTime;
+    }
+    if (settings.offDate !== undefined) {
+      state.schedule.offDate = settings.offDate;
+      if (DOM.offDate && document.activeElement !== DOM.offDate) DOM.offDate.value = settings.offDate;
+    }
+    if (settings.offTime !== undefined) {
+      state.schedule.offTime = settings.offTime;
+      if (DOM.offTime && document.activeElement !== DOM.offTime) DOM.offTime.value = settings.offTime;
+    }
+
+    if (settings.targetTemp != null) {
+      const t = parseFloat(settings.targetTemp);
+      if (!isNaN(t) && t >= 18 && t <= 27) {
+        state.targetTemp = t;
+        if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) DOM.targetTemp.value = t;
+        document.querySelectorAll('.temp-chip').forEach((chip) => {
+          const chipVal = parseFloat(chip.getAttribute('data-temp'));
+          chip.classList.toggle('temp-chip--active', chipVal === t);
+        });
+        updateMqttTempDisplay();
+      }
+    }
+
+    if (settings.acFan != null && DOM.fanSelect) {
+      state.acFan = Number(settings.acFan);
+      DOM.fanSelect.value = state.acFan;
+    }
+
+    updateScheduleSummary();
+    updateScheduleInputsState();
+    updateControlButtons();
+    saveSettings(false);
   }
 
   // ============================================================
@@ -1345,6 +1411,9 @@
 
     if (data.type === 'request_sync') {
       broadcastUiSync('full_sync');
+      if (typeof SensorHistoryManager !== 'undefined' && SensorHistoryManager.records.length > 0) {
+        SensorHistoryManager.publishCloudHistory();
+      }
       return;
     }
 
@@ -1530,16 +1599,18 @@
         state.mqttClient.subscribe(CONFIG.topicStatus, { qos: 1 });
         state.mqttClient.subscribe(CONFIG.topicAvailability, { qos: 1 });
         state.mqttClient.subscribe(CONFIG.topicControl, { qos: 1 });
-        state.mqttClient.subscribe(CONFIG.topicSync, { qos: 0 }, () => {
+        state.mqttClient.subscribe(CONFIG.topicSync, { qos: 1 }, () => {
           try {
             state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({ type: 'request_sync', senderId: state.clientId }));
           } catch (e) { }
         });
+        state.mqttClient.subscribe(CONFIG.topicHistorySync, { qos: 1 });
+        state.mqttClient.subscribe(CONFIG.topicSettingsSync, { qos: 1 });
 
         startPresenceTimer();
 
         addLog('success', 'เชื่อมต่อ HiveMQ Cloud MQTT Over WSS สำเร็จ!');
-        showToast('success', 'เชื่อมต่อ HiveMQ MQTT สำเร็จ');
+        showToast('success', 'เชื่อมต่อ HiveMQ MQTT สำเร็จ (เปิดใช้งานคลาวด์ซิงค์)');
       });
 
       state.mqttClient.on('message', (topic, payload) => {
@@ -1560,6 +1631,28 @@
             state.esp32Online = true;
             const statusData = JSON.parse(msgStr);
             handleMqttStatus(statusData);
+          } else if (topic === CONFIG.topicHistorySync) {
+            try {
+              if (msgStr) {
+                const histData = JSON.parse(msgStr);
+                if (histData && Array.isArray(histData.records) && typeof SensorHistoryManager !== 'undefined') {
+                  SensorHistoryManager.mergeRemoteRecords(histData.records);
+                }
+              }
+            } catch (e) {
+              console.warn('[MQTT History Sync] Parse error:', e);
+            }
+          } else if (topic === CONFIG.topicSettingsSync) {
+            try {
+              if (msgStr) {
+                const settingsData = JSON.parse(msgStr);
+                if (settingsData && settingsData.senderId !== state.clientId) {
+                  applyRemoteSettings(settingsData);
+                }
+              }
+            } catch (e) {
+              console.warn('[MQTT Settings Sync] Parse error:', e);
+            }
           } else if (topic === CONFIG.topicSync || topic === CONFIG.topicControl) {
             try {
               const syncData = JSON.parse(msgStr);
@@ -1567,6 +1660,14 @@
                 if (syncData.type === 'presence') {
                   state.activeUsers[syncData.clientId] = Date.now();
                   updateActiveUsersCount();
+                } else if (syncData.type === 'new_sensor_record') {
+                  if (syncData.record && typeof SensorHistoryManager !== 'undefined') {
+                    SensorHistoryManager.onRemoteRecordReceived(syncData.record);
+                  }
+                } else if (syncData.type === 'clear_sensor_history') {
+                  if (typeof SensorHistoryManager !== 'undefined') {
+                    SensorHistoryManager.onRemoteClearReceived();
+                  }
                 } else if (syncData.type === 'ui_sync' || syncData.type === 'request_sync') {
                   handleUiSyncMessage(syncData);
                 }
@@ -2227,11 +2328,10 @@
     if (!tempEl || !progressEl || !cardEl) return;
 
     if (value == null || isNaN(value)) {
-      if (state.sensors[`temp${index}`] != null) return;
-      value = (index === 1) ? 31.0 : (index === 2) ? 49.0 : 29.0;
+      return; // ห้ามใส่ค่าจำลองหลอก — รอรับค่าจริงจาก ESP32 / PLC ผ่าน MQTT
     }
 
-    const temp = parseFloat(value);
+    const temp = parseFloat(Number(value).toFixed(1));
     state.sensors[`temp${index}`] = temp;
 
     tempEl.textContent = temp.toFixed(1);
@@ -2257,8 +2357,7 @@
     if (!luxEl || !cardEl) return;
 
     if (value == null || isNaN(value)) {
-      if (state.sensors.lux != null) return;
-      value = 394;
+      return; // ห้ามใส่ค่าจำลองหลอก — รอรับค่าจริงจาก ESP32 / PLC ผ่าน MQTT
     }
 
     const lux = Math.max(0, Math.round(Number(value)));
@@ -2268,8 +2367,8 @@
     luxEl.textContent = lux.toLocaleString();
 
     if (progressEl) {
-      // Progress ring scale: 0 - 2000 Lux (มาตรฐานแสงสว่างในอาคาร)
-      const maxScale = 2000;
+      // Progress ring scale: 0 - 25,000 Lux (TSL2591 Digital Lux Sensor)
+      const maxScale = 25000;
       const pct = Math.min(Math.max(lux / maxScale, 0), 1);
       progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
     }
@@ -3155,11 +3254,9 @@
       await this.sanitizeDummyRecords();
 
       this.bindUI();
-      if (state.sensors.temp1 != null) {
-        this.checkAndAutoLog(true);
-      }
       this.startTicker();
       this.render();
+      this.updateCloudSyncStatus('synced', 'พร้อมซิงค์คลาวด์');
     },
 
     initDB() {
@@ -3227,29 +3324,31 @@
 
     saveRecord(record) {
       return new Promise((resolve) => {
-        this.records.push(record);
-        this.records.sort((a, b) => a.timestamp - b.timestamp);
+        const exists = this.records.some(r => r.timestamp === record.timestamp);
+        if (!exists) {
+          this.records.push(record);
+          this.records.sort((a, b) => a.timestamp - b.timestamp);
+        }
+
+        const afterSave = () => {
+          this.syncFallback();
+          this.publishCloudHistory();
+          this.broadcastNewRecord(record);
+          resolve();
+        };
 
         if (this.db) {
           try {
             const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
             const store = tx.objectStore(this.STORE_NAME);
             store.put(record);
-            tx.oncomplete = () => {
-              this.syncFallback();
-              resolve();
-            };
-            tx.onerror = () => {
-              this.syncFallback();
-              resolve();
-            };
+            tx.oncomplete = afterSave;
+            tx.onerror = afterSave;
           } catch (e) {
-            this.syncFallback();
-            resolve();
+            afterSave();
           }
         } else {
-          this.syncFallback();
-          resolve();
+          afterSave();
         }
       });
     },
@@ -3286,30 +3385,32 @@
     },
 
     getCurrentSensorValues() {
-      // ดึงค่าจริงจากเซนเซอร์ Real-time Telemetry (state.sensors จาก MQTT) เป็นลำดับแรก
+      // ดึงค่าจริงจากเซนเซอร์ Real-time Telemetry (state.sensors จาก MQTT)
       let t1 = (state.sensors.temp1 != null && !isNaN(state.sensors.temp1))
         ? parseFloat(Number(state.sensors.temp1).toFixed(1))
-        : (DOM.sensorTemp1 && !isNaN(parseFloat(DOM.sensorTemp1.textContent)) && parseFloat(DOM.sensorTemp1.textContent) > 0)
+        : (DOM.sensorTemp1 && !isNaN(parseFloat(DOM.sensorTemp1.textContent)) && DOM.sensorTemp1.textContent !== '--.-')
         ? parseFloat(DOM.sensorTemp1.textContent)
-        : 31.0;
+        : null;
 
       let t2 = (state.sensors.temp2 != null && !isNaN(state.sensors.temp2))
         ? parseFloat(Number(state.sensors.temp2).toFixed(1))
-        : (DOM.sensorTemp2 && !isNaN(parseFloat(DOM.sensorTemp2.textContent)) && parseFloat(DOM.sensorTemp2.textContent) > 0)
+        : (DOM.sensorTemp2 && !isNaN(parseFloat(DOM.sensorTemp2.textContent)) && DOM.sensorTemp2.textContent !== '--.-')
         ? parseFloat(DOM.sensorTemp2.textContent)
-        : 49.0;
+        : null;
 
       let t3 = (state.sensors.temp3 != null && !isNaN(state.sensors.temp3))
         ? parseFloat(Number(state.sensors.temp3).toFixed(1))
-        : (DOM.sensorTemp3 && !isNaN(parseFloat(DOM.sensorTemp3.textContent)) && parseFloat(DOM.sensorTemp3.textContent) > 0)
+        : (DOM.sensorTemp3 && !isNaN(parseFloat(DOM.sensorTemp3.textContent)) && DOM.sensorTemp3.textContent !== '--.-')
         ? parseFloat(DOM.sensorTemp3.textContent)
-        : 29.0;
+        : null;
 
       let lux = (state.sensors.lux != null && !isNaN(state.sensors.lux))
         ? Math.round(Number(state.sensors.lux))
-        : (DOM.sensorLuxVal && !isNaN(parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10)) && parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10) > 0)
+        : (state.sensors.d10 != null && !isNaN(state.sensors.d10))
+        ? Math.round(Number(state.sensors.d10))
+        : (DOM.sensorLuxVal && !isNaN(parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10)) && DOM.sensorLuxVal.textContent !== '---')
         ? parseInt(DOM.sensorLuxVal.textContent.replace(/,/g, ''), 10)
-        : 394;
+        : null;
 
       return { temp1: t1, temp2: t2, temp3: t3, lux };
     },
@@ -3317,51 +3418,18 @@
     async sanitizeDummyRecords() {
       if (!this.records || this.records.length === 0) return;
 
-      const isDummyRecord = (r) => {
-        if (!r) return false;
+      // กรองเฉพาะข้อมูล mock ดั้งเดิมที่เป็นตัวเลขจำลองตายตัว (เช่น 31/49/29/394 หรือ 25/28.5/16)
+      const isLegacyMockPlaceholder = (r) => {
+        if (!r) return true;
         if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
-        if (r.temp3 != null && r.temp3 < 23.0) return true;
-        if (r.temp2 != null && r.temp2 < 38.0) return true;
+        if (r.temp1 === 31.0 && r.temp2 === 49.0 && r.temp3 === 29.0 && r.lux === 394 && r.source !== 'manual') return true;
         return false;
       };
 
-      const hasDummy = this.records.some(isDummyRecord);
-      if (!hasDummy) return;
+      const hasLegacy = this.records.some(isLegacyMockPlaceholder);
+      if (!hasLegacy) return;
 
-      // ถ้าเป็นชุดข้อมูลจำลองชุดใหญ่ (>50 รายการ) ให้สร้างชุดข้อมูลใหม่ที่อิงฐานค่าจริง
-      if (this.records.length > 50) {
-        await this.generateSample30DayData(true);
-        return;
-      }
-
-      // กรองเรคคอร์ดจำลองเดิม 25/28.5/16 ทิ้งไป
-      this.records = this.records.filter((r) => !isDummyRecord(r));
-
-      // บันทึกค่าจริงจากเซนเซอร์ปัจจุบันทันที
-      if (state.sensors.temp1 != null) {
-        const live = this.getCurrentSensorValues();
-        const now = new Date();
-        const timestamp = now.getTime();
-        const dd = String(now.getDate()).padStart(2, '0');
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const yyyy = now.getFullYear();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mi = String(now.getMinutes()).padStart(2, '0');
-        const ss = String(now.getSeconds()).padStart(2, '0');
-        this.records.push({
-          timestamp,
-          iso: now.toISOString(),
-          dateStr: `${dd}/${mm}/${yyyy}`,
-          timeStr: `${hh}:${mi}:${ss}`,
-          temp1: live.temp1,
-          temp2: live.temp2,
-          temp3: live.temp3,
-          lux: live.lux,
-          source: 'auto',
-        });
-        this.lastLogTime = timestamp;
-        localStorage.setItem(this.LAST_LOG_KEY, String(timestamp));
-      }
+      this.records = this.records.filter((r) => !isLegacyMockPlaceholder(r));
 
       if (this.db) {
         try {
@@ -3378,6 +3446,14 @@
       const now = new Date();
       const timestamp = now.getTime();
       const vals = this.getCurrentSensorValues();
+
+      if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
+        if (source === 'manual') {
+          showToast('warning', 'ยังไม่ได้รับข้อมูลเซนเซอร์จริงจาก ESP32 / PLC กรุณารอสักครู่');
+          addLog('warning', '[ประวัติเซนเซอร์] ไม่สามารถบันทึกได้เนื่องจากยังไม่มีข้อมูลเซนเซอร์จริง');
+        }
+        return;
+      }
 
       const dd = String(now.getDate()).padStart(2, '0');
       const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -3405,10 +3481,10 @@
       await this.pruneExpiredRecords();
 
       this.lastLogTime = timestamp;
-      localStorage.setItem(this.LAST_LOG_KEY, String(timestamp));
+      try { localStorage.setItem(this.LAST_LOG_KEY, String(timestamp)); } catch (e) { }
 
       this.render();
-      addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูล (${source === 'auto' ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux}`);
+      addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
 
       if (source === 'manual') {
         showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
@@ -3417,8 +3493,12 @@
 
     checkAndAutoLog(isInit = false) {
       const now = Date.now();
+      const vals = this.getCurrentSensorValues();
+      if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
+        return;
+      }
       if (this.lastLogTime === 0) {
-        if (state.sensors.temp1 == null && !isInit) return;
+        if (isInit) return;
         this.logCurrentSnapshot('auto');
         return;
       }
@@ -3429,23 +3509,129 @@
     },
 
     onTelemetry() {
-      const isDummyRecord = (r) => {
-        if (!r) return false;
-        if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
-        if (r.temp3 != null && r.temp3 < 23.0) return true;
-        if (r.temp2 != null && r.temp2 < 38.0) return true;
-        return false;
-      };
+      // Telemetry จริงเข้ามาจาก ESP32 / PLC
+      this.checkAndAutoLog(false);
+      this.updateCountdownUI();
+      this.renderStats(this.getFilteredRecords());
+    },
 
-      if (this.records.length === 0 || this.records.some(isDummyRecord)) {
-        this.sanitizeDummyRecords().then(() => {
-          this.updateCountdownUI();
-          this.render();
+    broadcastNewRecord(record) {
+      if (!state.mqttClient || !state.mqttClient.connected) return;
+      try {
+        state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({
+          type: 'new_sensor_record',
+          senderId: state.clientId,
+          record: record
+        }), { qos: 1 });
+      } catch (e) { }
+    },
+
+    publishCloudHistory() {
+      if (!state.mqttClient || !state.mqttClient.connected) return;
+      try {
+        const compactRecords = this.records.slice(-500).map(r => ({
+          timestamp: r.timestamp,
+          iso: r.iso,
+          dateStr: r.dateStr,
+          timeStr: r.timeStr,
+          temp1: r.temp1,
+          temp2: r.temp2,
+          temp3: r.temp3,
+          lux: r.lux,
+          source: r.source || 'auto'
+        }));
+        const payload = JSON.stringify({
+          updatedAt: Date.now(),
+          senderId: state.clientId,
+          records: compactRecords
         });
+        state.mqttClient.publish(CONFIG.topicHistorySync, payload, { qos: 1, retain: true });
+        this.updateCloudSyncStatus('synced', `ซิงค์คลาวด์แล้ว (${this.records.length} รายการ)`);
+      } catch (e) {
+        console.warn('Failed to publish cloud history:', e);
+      }
+    },
+
+    onRemoteRecordReceived(record) {
+      if (!record || !record.timestamp) return;
+      if (this.records.some(r => r.timestamp === record.timestamp)) return;
+      this.records.push(record);
+      this.records.sort((a, b) => a.timestamp - b.timestamp);
+      this.lastLogTime = Math.max(this.lastLogTime, record.timestamp);
+      try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+
+      if (this.db) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.put(record);
+        } catch (e) {}
+      }
+      this.syncFallback();
+      this.render();
+      this.updateCloudSyncStatus('synced', `รับข้อมูลจากเครื่องอื่น (${this.records.length} รายการ)`);
+      addLog('info', `[คลาวด์ซิงค์] ได้รับข้อมูลเซนเซอร์ใหม่จากอุปกรณ์อื่น: S1=${record.temp1}°C, S2=${record.temp2}°C, S3=${record.temp3}°C, Lux=${record.lux}`);
+    },
+
+    onRemoteClearReceived() {
+      this.records = [];
+      this.lastLogTime = 0;
+      try {
+        localStorage.setItem(this.LAST_LOG_KEY, '0');
+        localStorage.removeItem(this.STORAGE_KEY);
+      } catch (e) {}
+      if (this.db) {
+        try {
+          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.clear();
+        } catch (e) {}
+      }
+      this.render();
+      this.updateCloudSyncStatus('synced', 'ล้างข้อมูลตรงกันทุกเครื่อง');
+      addLog('info', '[คลาวด์ซิงค์] อุปกรณ์อื่นทำการล้างประวัติข้อมูลเซนเซอร์');
+    },
+
+    mergeRemoteRecords(incomingList) {
+      if (!Array.isArray(incomingList) || incomingList.length === 0) return;
+      const existingTimestamps = new Set(this.records.map(r => r.timestamp));
+      let added = 0;
+      for (const r of incomingList) {
+        if (r && r.timestamp && !existingTimestamps.has(r.timestamp)) {
+          this.records.push(r);
+          existingTimestamps.add(r.timestamp);
+          added++;
+        }
+      }
+      if (added > 0) {
+        this.records.sort((a, b) => a.timestamp - b.timestamp);
+        if (this.records.length > 0) {
+          this.lastLogTime = Math.max(this.lastLogTime, this.records[this.records.length - 1].timestamp);
+          try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+        }
+        this.syncFallback();
+        if (this.db) {
+          try {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            this.records.forEach(rec => store.put(rec));
+          } catch (e) {}
+        }
+        this.render();
+        this.updateCloudSyncStatus('synced', `ซิงค์สำเร็จ (+${added} รวม ${this.records.length} รายการ)`);
+        addLog('info', `[คลาวด์ซิงค์] ซิงค์ประวัติเซนเซอร์ข้ามเครื่องสำเร็จ (+${added} รายการ รวม ${this.records.length} รายการ)`);
       } else {
-        this.checkAndAutoLog(false);
-        this.updateCountdownUI();
-        this.renderStats(this.getFilteredRecords());
+        this.updateCloudSyncStatus('synced', `ข้อมูลตรงกันแล้ว (${this.records.length} รายการ)`);
+      }
+    },
+
+    updateCloudSyncStatus(status = 'synced', msg = '') {
+      const badge = DOM.historyCloudSyncBadge || document.getElementById('historyCloudSyncBadge');
+      const textEl = DOM.historyCloudSyncText || document.getElementById('historyCloudSyncText');
+      if (!textEl) return;
+      textEl.textContent = msg || (status === 'synced' ? 'ซิงค์เรียบร้อย' : 'กำลังซิงค์...');
+      if (badge) {
+        badge.classList.toggle('is-syncing', status === 'syncing');
       }
     },
 
@@ -3881,8 +4067,9 @@
         const s3 = r.temp3 != null ? `${Number(r.temp3).toFixed(1)} °C` : '--';
         const lux = r.lux != null ? `${Number(r.lux).toLocaleString()} Lux` : '--';
         const isAuto = r.source === 'auto';
-        const badgeClass = isAuto ? 'history-badge-source--auto' : 'history-badge-source--manual';
-        const badgeText = isAuto ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที';
+        const isSample = r.source === 'sample';
+        const badgeClass = isSample ? 'history-badge-source--sample' : (isAuto ? 'history-badge-source--auto' : 'history-badge-source--manual');
+        const badgeText = isSample ? 'ข้อมูลตัวอย่าง' : (isAuto ? 'อัตโนมัติ 30 นาที' : 'บันทึกทันที');
 
         html += `
           <tr>
@@ -4194,13 +4381,13 @@
           temp2: outdoorTemp,
           temp3: inverterTemp,
           lux: Math.max(0, lux),
-          source: i === 0 ? 'realtime' : 'auto',
+          source: 'sample',
         });
       }
 
       this.records = sampleList;
       this.lastLogTime = now;
-      localStorage.setItem(this.LAST_LOG_KEY, String(now));
+      try { localStorage.setItem(this.LAST_LOG_KEY, String(now)); } catch(e){}
 
       if (this.db) {
         try {
@@ -4213,6 +4400,7 @@
         }
       }
       this.syncFallback();
+      this.publishCloudHistory();
 
       this.render();
       if (!silent) {
@@ -4228,8 +4416,10 @@
 
       this.records = [];
       this.lastLogTime = 0;
-      localStorage.removeItem(this.LAST_LOG_KEY);
-      localStorage.removeItem(this.STORAGE_KEY);
+      try {
+        localStorage.setItem(this.LAST_LOG_KEY, '0');
+        localStorage.removeItem(this.STORAGE_KEY);
+      } catch (e) {}
 
       if (this.db) {
         try {
@@ -4241,9 +4431,23 @@
         }
       }
 
+      // Clear retained history on HiveMQ Cloud & notify peers
+      if (state.mqttClient && state.mqttClient.connected) {
+        try {
+          const clearPayload = JSON.stringify({
+            updatedAt: Date.now(),
+            senderId: state.clientId,
+            records: []
+          });
+          state.mqttClient.publish(CONFIG.topicHistorySync, clearPayload, { qos: 1, retain: true });
+          state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({ type: 'clear_sensor_history', senderId: state.clientId }), { qos: 1 });
+        } catch (e) { }
+      }
+
       this.render();
-      showToast('info', 'ล้างข้อมูลประวัติเซนเซอร์เรียบร้อยแล้ว');
-      addLog('warning', '[ประวัติเซนเซอร์] ล้างข้อมูลประวัติทั้งหมดในระบบแล้ว');
+      this.updateCloudSyncStatus('synced', 'ล้างข้อมูลตรงกันทุกเครื่องแล้ว');
+      showToast('info', 'ล้างข้อมูลประวัติเซนเซอร์เรียบร้อยแล้ว (ทุกเครื่องตรงกัน)');
+      addLog('warning', '[ประวัติเซนเซอร์] ล้างข้อมูลประวัติทั้งหมดทั้งในเครื่องและบนคลาวด์แล้ว');
     },
 
     bindUI() {

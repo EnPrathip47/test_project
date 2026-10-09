@@ -1661,7 +1661,7 @@
                   state.activeUsers[syncData.clientId] = Date.now();
                   updateActiveUsersCount();
                 } else if (syncData.type === 'new_sensor_record') {
-                  if (syncData.record && typeof SensorHistoryManager !== 'undefined') {
+                  if (syncData.senderId !== state.clientId && syncData.record && typeof SensorHistoryManager !== 'undefined') {
                     SensorHistoryManager.onRemoteRecordReceived(syncData.record);
                   }
                 } else if (syncData.type === 'clear_sensor_history') {
@@ -2332,6 +2332,15 @@
     }
 
     const temp = parseFloat(Number(value).toFixed(1));
+
+    // กรองค่าตกฮวบชั่วคราว (เช่น 0.0°C จากสายเซนเซอร์หลวม/PLC Analog Scan หลุด/ยังไม่พร้อม) ให้คงค่าเดิมไว้ไม่ให้ตัวเลขกระพริบ
+    if (temp <= 0.0) {
+      if (state.sensors[`temp${index}`] != null && state.sensors[`temp${index}`] > 0) {
+        return; // คงค่าเดิมที่ถูกต้องไว้
+      }
+      return; // หากเริ่มต้นยังไม่มีค่า ให้รอค่าจริงที่ > 0
+    }
+
     state.sensors[`temp${index}`] = temp;
 
     tempEl.textContent = temp.toFixed(1);
@@ -3546,7 +3555,13 @@
 
       this.checkAndAutoLog(false);
       this.updateCountdownUI();
-      this.renderStats(this.getFilteredRecords());
+
+      // หน่วงเวลาการคำนวณสถิติหนักๆ ให้ทำไม่เกินทุก 3 วินาที เพื่อไม่ให้เบราว์เซอร์ค้างเวลาข้อมูล MQTT เข้ามาเร็ว
+      const nowTs = Date.now();
+      if (!this._lastStatsRender || (nowTs - this._lastStatsRender >= 3000)) {
+        this._lastStatsRender = nowTs;
+        this.renderStats(this.getFilteredRecords());
+      }
     },
 
     broadcastNewRecord(record) {
@@ -3899,19 +3914,25 @@
         if (emptyEl) emptyEl.style.display = 'none';
       }
 
-      // Handle HiDPI scaling
+      // Handle HiDPI scaling safely without destroying GPU buffer on every redraw
       const dpr = window.devicePixelRatio || 1;
       const rect = this.canvas.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
-      this.canvas.width = width * dpr;
-      this.canvas.height = height * dpr;
-      if (this.ctx.resetTransform) {
-        this.ctx.resetTransform();
+      const targetW = Math.round(width * dpr);
+      const targetH = Math.round(height * dpr);
+      if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
+        this.canvas.width = targetW;
+        this.canvas.height = targetH;
+        if (this.ctx.resetTransform) {
+          this.ctx.resetTransform();
+        } else {
+          this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+        this.ctx.scale(dpr, dpr);
       } else {
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.clearRect(0, 0, width, height);
       }
-      this.ctx.scale(dpr, dpr);
 
       const padding = { top: 25, right: 65, bottom: 40, left: 55 };
       const plotW = width - padding.left - padding.right;
@@ -4670,62 +4691,72 @@
         this.canvas = canvasEl;
         this.ctx = canvasEl.getContext('2d');
 
+        let pointerRaf = null;
+
         const handlePointerMove = (clientX, clientY) => {
-          const filtered = this.getFilteredRecords();
-          if (filtered.length === 0) return;
+          if (pointerRaf) return;
+          pointerRaf = requestAnimationFrame(() => {
+            pointerRaf = null;
+            const filtered = this.getFilteredRecords();
+            if (filtered.length === 0) return;
 
-          const rect = canvasEl.getBoundingClientRect();
-          const mouseX = clientX - rect.left;
-          const padding = { top: 25, right: 65, bottom: 40, left: 55 };
-          const plotW = rect.width - padding.left - padding.right;
+            const rect = canvasEl.getBoundingClientRect();
+            const mouseX = clientX - rect.left;
+            const padding = { top: 25, right: 65, bottom: 40, left: 55 };
+            const plotW = rect.width - padding.left - padding.right;
 
-          if (mouseX < padding.left || mouseX > padding.left + plotW) {
-            this.hoverIndex = -1;
-            tooltipEl.style.display = 'none';
-            this.renderChart(filtered);
-            return;
-          }
-
-          const minTime = filtered[0].timestamp;
-          const maxTime = filtered[filtered.length - 1].timestamp;
-          const timeSpan = maxTime - minTime || 1;
-          const targetTime = minTime + ((mouseX - padding.left) / plotW) * timeSpan;
-
-          let closestIdx = 0;
-          let minDiff = Infinity;
-          for (let i = 0; i < filtered.length; i++) {
-            const diff = Math.abs(filtered[i].timestamp - targetTime);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestIdx = i;
+            if (mouseX < padding.left || mouseX > padding.left + plotW) {
+              if (this.hoverIndex !== -1) {
+                this.hoverIndex = -1;
+                tooltipEl.style.display = 'none';
+                this.renderChart(filtered);
+              }
+              return;
             }
-          }
 
-          this.hoverIndex = closestIdx;
-          const pt = filtered[closestIdx];
+            const minTime = filtered[0].timestamp;
+            const maxTime = filtered[filtered.length - 1].timestamp;
+            const timeSpan = maxTime - minTime || 1;
+            const targetTime = minTime + ((mouseX - padding.left) / plotW) * timeSpan;
 
-          tooltipEl.innerHTML = `
-            <div style="font-weight:600;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:3px;">
-              📅 ${escapeHtml(pt.dateStr)} &nbsp;⏰ ${escapeHtml(pt.timeStr)}
-            </div>
-            ${this.activeSensors.s1 && pt.temp1 != null ? `<div style="color:#38bdf8;">● เซนเซอร์ 1 (Indoor): <strong>${Number(pt.temp1).toFixed(1)} °C</strong></div>` : ''}
-            ${this.activeSensors.s2 && pt.temp2 != null ? `<div style="color:#fb923c;">● เซนเซอร์ 2 (Outdoor): <strong>${Number(pt.temp2).toFixed(1)} °C</strong></div>` : ''}
-            ${this.activeSensors.s3 && pt.temp3 != null ? `<div style="color:#c084fc;">● เซนเซอร์ 3 (Inverter): <strong>${Number(pt.temp3).toFixed(1)} °C</strong></div>` : ''}
-            ${this.activeSensors.lux && pt.lux != null ? `<div style="color:#facc15;">● ความเข้มแสง (Lux): <strong>${Number(pt.lux).toLocaleString()} lx</strong></div>` : ''}
-            <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ (30 นาที)' : 'บันทึกทันที'}</div>
-          `;
+            let closestIdx = 0;
+            let minDiff = Infinity;
+            for (let i = 0; i < filtered.length; i++) {
+              const diff = Math.abs(filtered[i].timestamp - targetTime);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = i;
+              }
+            }
 
-          tooltipEl.style.display = 'block';
+            const changed = (this.hoverIndex !== closestIdx);
+            this.hoverIndex = closestIdx;
+            const pt = filtered[closestIdx];
 
-          const tooltipWidth = tooltipEl.offsetWidth || 180;
-          let leftPos = mouseX + 12;
-          if (leftPos + tooltipWidth > rect.width) {
-            leftPos = mouseX - tooltipWidth - 12;
-          }
-          tooltipEl.style.left = `${Math.max(8, leftPos)}px`;
-          tooltipEl.style.top = '14px';
+            if (changed || tooltipEl.style.display !== 'block') {
+              tooltipEl.innerHTML = `
+                <div style="font-weight:600;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:3px;">
+                  📅 ${escapeHtml(pt.dateStr)} &nbsp;⏰ ${escapeHtml(pt.timeStr)}
+                </div>
+                ${this.activeSensors.s1 && pt.temp1 != null ? `<div style="color:#38bdf8;">● เซนเซอร์ 1 (Indoor): <strong>${Number(pt.temp1).toFixed(1)} °C</strong></div>` : ''}
+                ${this.activeSensors.s2 && pt.temp2 != null ? `<div style="color:#fb923c;">● เซนเซอร์ 2 (Outdoor): <strong>${Number(pt.temp2).toFixed(1)} °C</strong></div>` : ''}
+                ${this.activeSensors.s3 && pt.temp3 != null ? `<div style="color:#c084fc;">● เซนเซอร์ 3 (Inverter): <strong>${Number(pt.temp3).toFixed(1)} °C</strong></div>` : ''}
+                ${this.activeSensors.lux && pt.lux != null ? `<div style="color:#facc15;">● ความเข้มแสง (Lux): <strong>${Number(pt.lux).toLocaleString()} lx</strong></div>` : ''}
+                <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ (30 นาที)' : 'บันทึกทันที'}</div>
+              `;
 
-          this.renderChart(filtered);
+              tooltipEl.style.display = 'block';
+              this.renderChart(filtered);
+            }
+
+            const tooltipWidth = tooltipEl.offsetWidth || 180;
+            let leftPos = mouseX + 12;
+            if (leftPos + tooltipWidth > rect.width) {
+              leftPos = mouseX - tooltipWidth - 12;
+            }
+            tooltipEl.style.left = `${Math.max(8, leftPos)}px`;
+            tooltipEl.style.top = '14px';
+          });
         };
 
         canvasEl.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
@@ -4746,8 +4777,12 @@
           this.renderChart(this.getFilteredRecords());
         });
 
+        let resizeTimer = null;
         window.addEventListener('resize', () => {
-          this.renderChart(this.getFilteredRecords());
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            this.renderChart(this.getFilteredRecords());
+          }, 150);
         });
       }
     },

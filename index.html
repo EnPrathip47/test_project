@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20261009_responsive" />
+  <link rel="stylesheet" href="style.css?v=20261013_no_avg" />
 </head>
 
 <body>
@@ -149,7 +149,7 @@
       </div>
     </section>
 
-    <!-- ── SENSOR HISTORY SECTION (บันทึกข้อมูลอุณหภูมิ & แสง ทุก 30 นาที / ย้อนหลัง 30 วัน) ── -->
+    <!-- ── SENSOR HISTORY SECTION (บันทึกข้อมูลอุณหภูมิ & แสง ทุก 1 ชั่วโมง ถึง 20:00 น. / ย้อนหลัง 30 วัน) ── -->
     <section class="section section--sensor-history" id="sectionSensorHistory">
       <div class="section__header">
         <div class="section__title-group">
@@ -158,7 +158,7 @@
             ประวัติบันทึกค่าอุณหภูมิ &amp; ความเข้มแสง
           </h2>
           <p class="section__description">
-            จัดเก็บบันทึกค่าในเว็บอัตโนมัติทุก 30 นาที พร้อมระบุวันเวลา • เก็บข้อมูลสูงสุด 30 วัน (เกิน 30 วันลบอัตโนมัติ) • แยกเซนเซอร์แต่ละตัว
+            จัดเก็บบันทึกค่าในเว็บอัตโนมัติทุก 1 ชั่วโมง (ช่วงเวลา 08:00 - 20:00 น.) พร้อมระบุวันเวลา • เก็บข้อมูลสูงสุด 30 วัน (เกิน 30 วันลบอัตโนมัติ) • แยกเซนเซอร์แต่ละตัว
           </p>
         </div>
         <div class="history-header-badges">
@@ -251,116 +251,6 @@
         </div>
       </div>
 
-      <!-- KPI Statistics Cards (แยกเซนเซอร์แต่ละตัว) -->
-      <div class="history-stats-grid">
-        <!-- Card Sensor 1 -->
-        <div class="history-stat-card history-stat-card--s1">
-          <div class="history-stat-card__header">
-            <span class="history-stat-card__icon">🏠</span>
-            <span class="history-stat-card__title">เซนเซอร์ 1 (Indoor)</span>
-            <span class="history-stat-card__tag">ภายในห้อง</span>
-          </div>
-          <div class="history-stat-card__main">
-            <span class="history-stat-card__current" id="statCurS1">--.-</span>
-            <span class="history-stat-card__unit">°C</span>
-          </div>
-          <div class="history-stat-card__metrics">
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
-              <span class="history-stat-metric__val" id="statAvgS1">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
-              <span class="history-stat-metric__val" id="statMinS1">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">สูงสุด (Max)</span>
-              <span class="history-stat-metric__val" id="statMaxS1">--.- °C</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card Sensor 2 -->
-        <div class="history-stat-card history-stat-card--s2">
-          <div class="history-stat-card__header">
-            <span class="history-stat-card__icon">🌳</span>
-            <span class="history-stat-card__title">เซนเซอร์ 2 (Outdoor)</span>
-            <span class="history-stat-card__tag">ภายนอก</span>
-          </div>
-          <div class="history-stat-card__main">
-            <span class="history-stat-card__current" id="statCurS2">--.-</span>
-            <span class="history-stat-card__unit">°C</span>
-          </div>
-          <div class="history-stat-card__metrics">
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
-              <span class="history-stat-metric__val" id="statAvgS2">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
-              <span class="history-stat-metric__val" id="statMinS2">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">สูงสุด (Max)</span>
-              <span class="history-stat-metric__val" id="statMaxS2">--.- °C</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card Sensor 3 -->
-        <div class="history-stat-card history-stat-card--s3">
-          <div class="history-stat-card__header">
-            <span class="history-stat-card__icon">⚡</span>
-            <span class="history-stat-card__title">เซนเซอร์ 3 (Inverter)</span>
-            <span class="history-stat-card__tag">อินเวอร์เตอร์</span>
-          </div>
-          <div class="history-stat-card__main">
-            <span class="history-stat-card__current" id="statCurS3">--.-</span>
-            <span class="history-stat-card__unit">°C</span>
-          </div>
-          <div class="history-stat-card__metrics">
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
-              <span class="history-stat-metric__val" id="statAvgS3">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
-              <span class="history-stat-metric__val" id="statMinS3">--.- °C</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">สูงสุด (Max)</span>
-              <span class="history-stat-metric__val" id="statMaxS3">--.- °C</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card Sensor Lux -->
-        <div class="history-stat-card history-stat-card--lux">
-          <div class="history-stat-card__header">
-            <span class="history-stat-card__icon">☀️</span>
-            <span class="history-stat-card__title">ความเข้มแสง (Lux)</span>
-            <span class="history-stat-card__tag">ความสว่าง</span>
-          </div>
-          <div class="history-stat-card__main">
-            <span class="history-stat-card__current" id="statCurLux">--</span>
-            <span class="history-stat-card__unit">Lux</span>
-          </div>
-          <div class="history-stat-card__metrics">
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">เฉลี่ย (Avg)</span>
-              <span class="history-stat-metric__val" id="statAvgLux">-- Lux</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">ต่ำสุด (Min)</span>
-              <span class="history-stat-metric__val" id="statMinLux">-- Lux</span>
-            </div>
-            <div class="history-stat-metric">
-              <span class="history-stat-metric__label">สูงสุด (Max)</span>
-              <span class="history-stat-metric__val" id="statMaxLux">-- Lux</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- Interactive Chart Container -->
       <div class="history-chart-card">
@@ -768,50 +658,6 @@
       </div>
     </section>
 
-    <!-- ── SETTINGS ── -->
-    <section class="section section--settings" id="sectionSettings">
-      <div class="section__header">
-        <h2 class="section__title">
-          <span class="section__icon">⚙️</span>
-          การตั้งค่าการเชื่อมต่อ
-        </h2>
-      </div>
-      <div class="settings-panel">
-        <div class="settings-grid"
-          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 12px;">
-          <div class="settings-field">
-            <label class="settings-field__label" for="mqttHostInput">ที่อยู่ HiveMQ Broker Host</label>
-            <input type="text" class="settings-field__input" id="mqttHostInput"
-              value="35d4bbdea6454305b3cc211b02309fc1.s1.eu.hivemq.cloud"
-              placeholder="35d4bbdea...s1.eu.hivemq.cloud" />
-          </div>
-          <div class="settings-field">
-            <label class="settings-field__label" for="mqttUsernameInput">HiveMQ Username (Access Management)</label>
-            <input type="text" class="settings-field__input" id="mqttUsernameInput" value="esp32s3_aircontrol"
-              placeholder="ระบุ Username จาก HiveMQ" />
-          </div>
-          <div class="settings-field">
-            <label class="settings-field__label" for="mqttPasswordInput">HiveMQ Password</label>
-            <input type="password" class="settings-field__input" id="mqttPasswordInput" value="project123"
-              placeholder="ระบุ Password จาก HiveMQ" />
-          </div>
-        </div>
-        <div class="settings-actions">
-          <button class="btn btn--connect" id="connectBtn">
-            <span class="btn__icon">🔌</span>
-            บันทึก & เชื่อมต่อ MQTT
-          </button>
-          <button class="btn btn--disconnect" id="disconnectBtn" disabled>
-            <span class="btn__icon">⛔</span>
-            ตัดการเชื่อมต่อ
-          </button>
-          <button class="btn btn--demo" id="demoBtn">
-            <span class="btn__icon">🧪</span>
-            โหมดจำลอง (Demo)
-          </button>
-        </div>
-      </div>
-    </section>
 
     <!-- ── LOG ── -->
     <section class="section section--log" id="sectionLog">
@@ -2163,7 +2009,7 @@
             <div class="manual-faq-item">
               <div class="manual-faq-question">Q: ระบบบันทึกประวัติอุณหภูมิ & แสง ทำงานอย่างไร และส่งออกไปวิเคราะห์ต่อใน Excel ได้อย่างไร?</div>
               <div class="manual-faq-answer">
-                <strong>บันทึกอัตโนมัติทุก 30 นาที & ส่งออก Excel (.xlsx):</strong> ระบบจะจัดเก็บค่าอุณหภูมิทั้ง 3 เซนเซอร์และความเข้มแสงลงในฐานข้อมูล <code>IndexedDB</code> อัตโนมัติทุก 30 นาที พร้อมระบุวันเวลาละเอียด และตัดข้อมูลที่เก่าเกิน 30 วันทิ้งอัตโนมัติ โดยผู้ใช้สามารถกดปุ่ม <code>📊 ส่งออก Excel (.xlsx)</code> เพื่อดาวน์โหลด Workbook ที่มีทั้งชีตข้อมูลดิบ (Numeric สำหรับคำนวณสูตร) และชีตสรุปสถิติ (Mean, Min, Max, SD, Range) นำไปทำ Pivot Table หรือพล็อตกราฟวิเคราะห์ต่อได้ทันที
+                <strong>บันทึกอัตโนมัติทุก 1 ชั่วโมง (ถึง 20:00 น.) & ส่งออก Excel (.xlsx):</strong> ระบบจะจัดเก็บค่าอุณหภูมิทั้ง 3 เซนเซอร์และความเข้มแสงลงในฐานข้อมูล <code>IndexedDB</code> อัตโนมัติทุก 1 ชั่วโมง (ช่วงเวลา 08:00 - 20:00 น.) พร้อมระบุวันเวลาละเอียด และตัดข้อมูลที่เก่าเกิน 30 วันทิ้งอัตโนมัติ โดยผู้ใช้สามารถกดปุ่ม <code>📊 ส่งออก Excel (.xlsx)</code> เพื่อดาวน์โหลด Workbook ที่มีทั้งชีตข้อมูลดิบ (Numeric สำหรับคำนวณสูตร) และชีตสรุปสถิติ (Mean, Min, Max, SD, Range) นำไปทำ Pivot Table หรือพล็อตกราฟวิเคราะห์ต่อได้ทันที
               </div>
             </div>
           </div>
@@ -2192,7 +2038,7 @@
 
   <script src="mqtt.min.js"></script>
   <script src="xlsx.full.min.js"></script>
-  <script src="app.js?v=20261013_stop_lock_fix"></script>
+  <script src="app.js?v=20261013_clean_settings_1h_log"></script>
 </body>
 
 </html>

@@ -3435,8 +3435,8 @@ body {
 
 .history-stat-card__metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
 }

@@ -1981,7 +1981,7 @@
     }
 
     // HMI Manual Mode M5 Start Trigger Synchronization (อิงเวลาเริ่มตามเวลากด M5 บน HMI)
-    if (state.scheduleMode === 'manual' && (mqttData.m5_start === 1 || (mqttData.start_hour !== undefined && (mqttData.power === 1 || mqttData.m1_green === 1 || mqttData.y2_green === 1)))) {
+    if (state.systemState !== 'stopped' && state.scheduleMode === 'manual' && (mqttData.m5_start === 1 || (mqttData.start_hour !== undefined && (mqttData.power === 1 || mqttData.m1_green === 1 || mqttData.y2_green === 1)))) {
       state.schedule.enabled = true;
       if (mqttData.start_hour !== undefined && mqttData.start_minute !== undefined) {
         const sH = String(mqttData.start_hour).padStart(2, '0');
@@ -2040,8 +2040,12 @@
       if (state.systemState !== 'idle') {
         updateSystemState('idle');
       }
+    } else if (state.systemState === 'stopped') {
+      // ผู้ใช้กดหยุด (STOP) -> ล็อกสถานะไว้ถาวร ห้ามให้ข้อมูลจาก PLC หรือ Auto Schedule ดึงกลับไปรัน จนกว่าจะกดปุ่ม "รีเซท" เท่านั้น
+      state.acOn = false;
+      state.acPower = 0;
     } else if (isPlcRed) {
-      if (state.scheduleMode === 'auto' && state.systemState !== 'stopped') {
+      if (state.scheduleMode === 'auto') {
         // ในโหมด AUTO: เมื่อครบเวลา 17:00 จะไม่ล็อก TIMEOUT แต่จะรีเซทเป็น READY (รอนอกเวลาเริ่มใหม่วันพรุ่งนี้)
         const nowDate = new Date();
         const curMins = nowDate.getHours() * 60 + nowDate.getMinutes();
@@ -2076,7 +2080,11 @@
       state.acPower = 1;
     } else {
       // AC is OFF and Hardware Red Lamp is NOT Active (M2=0, M12=0)
-      if (now < state.userActionUntil && (state.systemState === 'stopped' || state.systemState === 'timeout')) {
+      if (state.systemState === 'stopped') {
+        // Keep stopped locked until Reset button is clicked
+        state.acOn = false;
+        state.acPower = 0;
+      } else if (now < state.userActionUntil && state.systemState === 'timeout') {
         // Keep optimistic stop/timeout during user action window (5 seconds)
         state.acOn = false;
         state.acPower = 0;

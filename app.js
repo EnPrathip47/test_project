@@ -502,7 +502,7 @@
           state.acOn = true;
           updateSystemState('running');
           sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1
-          startIrTransmissionLock(5500);
+          startIrTransmissionLock(2000);
           addLog('success', `[AUTO] ถึงเวลาเริ่มทำงาน (08:00) -> สั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR อัตโนมัติ`);
           showToast('success', `⏰ ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (08:00) — เริ่มทำงานอัตโนมัติ`);
           broadcastUiSync('start_ac');
@@ -516,17 +516,22 @@
           }
         }
       } else {
-        // นอกเวลา (ก่อน 08:00 หรือ หลัง 17:00) -> นอกเวลาเขียวจะกระพริบ (READY)
+        // นอกเวลา (หลัง 17:00 หรือ ก่อน 08:00) -> สั่งหยุดแอร์เองและรีเซทเองเพื่อรอเริ่มใหม่วันพรุ่งนี้ (READY - เขียวกระพริบ)
         state.preStopWarned = false;
         if (state.systemState === 'running') {
           state.acOn = false;
-          sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1);
-          startIrTransmissionLock(5500);
-          addLog('info', `[AUTO] ครบเวลาทำงาน (17:00) -> ปิดเครื่องปรับอากาศ และเข้าสู่สถานะรอนอกเวลา (เขียวกระพริบ)`);
-          showToast('info', `⏰ ครบเวลาทำงานแล้ว (17:00) — ปิดเครื่องปรับอากาศ และเข้าสู่สถานะรอนอกเวลา (เขียวกระพริบ)`);
+          state.acPower = 0;
+          // สั่งหยุดแอร์เองและรีเซทเอง (complete=0, reset=1, mode_auto=1) เพื่อรอเริ่มใหม่วันพรุ่งนี้ 08:00 น.
+          sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 1, 0, 0, 0, 1, 0, false, 0, 0);
+          startIrTransmissionLock(2000);
+          updateSystemState('ready');
+          addLog('info', `[AUTO] ครบเวลาทำงาน (17:00) -> สั่งหยุดแอร์เองและรีเซทระบบอัตโนมัติเพื่อรอเริ่มทำงานใหม่วันพรุ่งนี้`);
+          showToast('info', `⏰ [AUTO] ครบเวลาทำงานแล้ว (17:00) — หยุดแอร์เองและรีเซทระบบเพื่อรอเริ่มทำงานใหม่วันพรุ่งนี้ 08:00 น.`);
+          broadcastUiSync('stop_ac');
         }
         if (state.systemState !== 'ready') {
           state.acOn = false;
+          state.acPower = 0;
           updateSystemState('ready');
         }
       }
@@ -548,7 +553,7 @@
         state.acOn = true;
         updateSystemState('running');
         sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1
-        startIrTransmissionLock(5500);
+        startIrTransmissionLock(2000);
         addLog('success', `[Auto-Start] ถึงเวลาเริ่มทำงาน (${onTimeVal}) -> สั่งเปิดเครื่องปรับอากาศและยิงสัญญาณ IR อัตโนมัติ`);
         showToast('success', `⏰ ถึงเวลาเปิดเครื่องปรับอากาศแล้ว (${onTimeVal}) — เริ่มทำงานอัตโนมัติ`);
         broadcastUiSync('start_ac');
@@ -564,7 +569,7 @@
         state.acOn = false;
         updateSystemState('timeout');
         sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 1); // [ Complete Flag set M500 ]
-        startIrTransmissionLock(5500);
+        startIrTransmissionLock(2000);
         addLog('warning', `[Schedule] ครบเวลาทำงาน (${offTimeVal}) -> ส่งคำสั่งปิดเครื่องปรับอากาศและยิงสัญญาณ IR`);
         showToast('warning', `🛑 ทำงานครบเวลาแล้ว (${offTimeVal}) — ปิดเครื่องปรับอากาศเรียบร้อย (กรุณากดรีเซทเพื่อเริ่มรอบใหม่)`);
       }
@@ -617,9 +622,7 @@
 
     DOM.onTime?.addEventListener('input', () => {
       state.schedule.onTime = DOM.onTime.value;
-      saveSettings();
       updateScheduleInputsState();
-      broadcastUiSync('change_input');
     });
     DOM.onTime?.addEventListener('change', () => {
       validateTimeInterval();
@@ -638,9 +641,7 @@
 
     DOM.offTime?.addEventListener('input', () => {
       state.schedule.offTime = DOM.offTime.value;
-      saveSettings();
       updateScheduleInputsState();
-      broadcastUiSync('change_input');
     });
     DOM.offTime?.addEventListener('change', () => {
       validateTimeInterval();
@@ -651,6 +652,7 @@
 
     DOM.targetTemp?.addEventListener('change', () => {
       state.userModifiedTemp = true;
+      state.userModifiedTempUntil = Date.now() + 4500;
       const validVal = getValidTargetTemp();
       updateMqttTempDisplay();
       saveSettings();
@@ -659,22 +661,23 @@
       const isRunning = (state.systemState === 'running' || state.acOn) && inWindow;
       if (isRunning) {
         sendMqttPayload(1, validVal, 0, state.acFan, 0, 0, 1, 0);
-        startIrTransmissionLock(5500);
+        startIrTransmissionLock(2000);
       }
     });
     DOM.targetTemp?.addEventListener('input', () => {
       state.userModifiedTemp = true;
       updateMqttTempDisplay();
-      broadcastUiSync('change_control');
     });
     DOM.targetTemp?.addEventListener('blur', () => {
+      state.userModifiedTemp = true;
+      state.userModifiedTempUntil = Date.now() + 4500;
       const validVal = getValidTargetTemp();
       updateMqttTempDisplay();
       const inWindow = isCurrentlyInWorkingWindow();
       const isRunning = (state.systemState === 'running' || state.acOn) && inWindow;
       if (isRunning) {
         sendMqttPayload(1, validVal, 0, state.acFan, 0, 0, 1, 0);
-        startIrTransmissionLock(5500);
+        startIrTransmissionLock(2000);
       }
     });
 
@@ -704,7 +707,7 @@
       const isRunning = (state.systemState === 'running' || state.acOn) && inWindow;
       if (isRunning) {
         sendMqttPayload(1, getValidTargetTemp(), 0, state.acFan, 0, 0, 1, 0);
-        startIrTransmissionLock(5500);
+        startIrTransmissionLock(2000);
       }
     });
 
@@ -805,7 +808,7 @@
       return;
     }
     if (state.irTransmitting) {
-      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนเปลี่ยนอุณหภูมิ');
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (5 ครั้ง)... กรุณารอให้สัญญาณยิงครบ 5 ครั้งก่อนเปลี่ยนอุณหภูมิ');
       return;
     }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
@@ -820,7 +823,7 @@
   function setTargetTemp(val, isUserAction = false) {
     if (state.scheduleMode === 'none') return;
     if (state.irTransmitting) {
-      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนเปลี่ยนอุณหภูมิ');
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (5 ครั้ง)... กรุณารอให้สัญญาณยิงครบ 5 ครั้งก่อนเปลี่ยนอุณหภูมิ');
       return;
     }
     if (state.systemState === 'stopped' || state.systemState === 'timeout') {
@@ -848,8 +851,8 @@
 
       if (isRunning) {
         sendMqttPayload(1, validVal, 0, state.acFan, 0, 0, 1, 0);
-        startIrTransmissionLock(5500);
-        showToast('success', `ส่งค่าอุณหภูมิ ${validVal}°C ไปยังแอร์แล้ว (กำลังยิง IR 10 รอบ...)`);
+        startIrTransmissionLock(2000);
+        showToast('success', `ส่งค่าอุณหภูมิ ${validVal}°C ไปยังแอร์แล้ว (กำลังยิง IR 5 ครั้ง / 1 Scan...)`);
       } else {
         // ยังไม่ถึงเวลาเริ่มทำงาน หรือยังไม่รัน -> บันทึกค่าอุณหภูมิไว้เพื่อรอเวลาเริ่ม โดยไม่ยิงไปแอร์
         showToast('info', `ตั้งค่าอุณหภูมิเป้าหมาย ${validVal}°C สำเร็จ (จะเริ่มทำงานเมื่อถึงเวลาที่กำหนด)`);
@@ -1122,7 +1125,7 @@
       showToast('info', '⚡ โหมด NONE — ปลดล็อคและกลับสู่โหมด NONE (พร้อมเลือกโหมดใหม่)');
       addLog('info', '[Mode] เปลี่ยนเป็น NONE MODE (ปลดล็อคแล้ว)');
     } else if (mode === 'auto') {
-      showToast('info', '🔄 เลือกโหมด AUTO สำเร็จ (เวลาฟิกซ์ 08:00 - 17:00) — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
+      showToast('info', '🔄 เลือกโหมด AUTO สำเร็จ (ทำงานทุกวัน 08:00 - 17:00 จนกว่าจะกดหยุด — ครบเวลาจะหยุดแอร์และรีเซทเองเพื่อเริ่มใหม่วันพรุ่งนี้)');
       addLog('info', '[Mode] เลือกโหมด AUTO (ล็อคโหมดแล้ว — ต้องกดรีเซทเพื่อกลับไปโหมด NONE)');
     } else if (mode === 'manual') {
       showToast('info', '🛠️ เลือกโหมด MANUAL สำเร็จ (ตั้งเวลาแล้วกด "บันทึกค่า") — ล็อคโหมดแล้ว (กดรีเซทเมื่อต้องการเปลี่ยน)');
@@ -1174,7 +1177,7 @@
       if (isNone) {
         DOM.modeInfoDesc.textContent = 'โหมด NONE | ไฟสีเหลืองติดค้าง (สลับเป็น AUTO หรือ MANUAL เพื่อเริ่ม)';
       } else if (isAuto) {
-        DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 | ปรับอุณหภูมิได้ & กดหยุดได้เมื่อถึงเวลาทำงาน';
+        DOM.modeInfoDesc.textContent = 'ทำงานทุกวัน 08:00 - 17:00 จนกว่าจะกดหยุด | ครบเวลาหยุดแอร์เอง & รีเซทเองเพื่อเริ่มใหม่วันพรุ่งนี้';
       } else {
         DOM.modeInfoDesc.textContent = 'โหมด MANUAL | ไฟสีเหลืองกระพริบ (ปรับตั้งวันเวลา และกดบันทึกค่า)';
       }
@@ -1343,6 +1346,17 @@
     } catch (e) { }
   }
 
+  function sendPresenceOffline() {
+    if (!state.mqttClient || !state.mqttClient.connected) return;
+    try {
+      state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({
+        type: 'presence_offline',
+        clientId: state.clientId,
+        timestamp: Date.now()
+      }));
+    } catch (e) { }
+  }
+
   function startPresenceTimer() {
     if (state.presenceTimer) clearInterval(state.presenceTimer);
     state.activeUsers[state.clientId] = Date.now();
@@ -1352,6 +1366,8 @@
       sendPresenceHeartbeat();
       pruneInactiveUsers();
     }, 4000);
+    window.removeEventListener('beforeunload', sendPresenceOffline);
+    window.addEventListener('beforeunload', sendPresenceOffline);
   }
 
   function stopPresenceTimer() {
@@ -1410,18 +1426,21 @@
     if (!data || data.senderId === state.clientId) return; // Ignore own messages
 
     if (data.type === 'request_sync') {
-      broadcastUiSync('full_sync');
-      if (typeof SensorHistoryManager !== 'undefined' && SensorHistoryManager.records.length > 0) {
-        SensorHistoryManager.publishCloudHistory();
-      }
+      // Throttle response to prevent multi-client broadcast storms
+      if (state.syncResponseTimer) clearTimeout(state.syncResponseTimer);
+      state.syncResponseTimer = setTimeout(() => {
+        broadcastUiSync('full_sync');
+        if (typeof SensorHistoryManager !== 'undefined' && SensorHistoryManager.records.length > 0) {
+          SensorHistoryManager.publishCloudHistory();
+        }
+      }, 150 + Math.floor(Math.random() * 200));
       return;
     }
 
-    // Reset user pending modification flags when synced from another user
-    state.userModifiedPower = false;
-    state.userModifiedMode = false;
-    state.userModifiedFan = false;
-    state.userModifiedTemp = false;
+    const syncNow = Date.now();
+    const localActiveTemp = (syncNow < state.userModifiedTempUntil || state.userModifiedTemp);
+    const localActivePower = (syncNow < state.userModifiedPowerUntil || state.userModifiedPower);
+    const localActiveMode = (syncNow < state.userModifiedModeUntil || state.userModifiedMode);
 
     // Handle Reset action explicitly
     if (data.action === 'reset_system') {
@@ -1470,7 +1489,7 @@
     }
 
     // 3. Update Schedule Mode
-    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode) {
+    if (data.scheduleMode && data.scheduleMode !== state.scheduleMode && !localActiveMode) {
       state.scheduleMode = data.scheduleMode;
       applyScheduleMode(data.scheduleMode);
       if (data.action === 'change_mode') {
@@ -1483,7 +1502,7 @@
     }
 
     // 4. Update Target Temp, Mode, Fan
-    if (data.targetTemp !== undefined) {
+    if (data.targetTemp !== undefined && !localActiveTemp) {
       const t = parseFloat(data.targetTemp);
       if (!isNaN(t) && t >= 18 && t <= 27) {
         state.targetTemp = t;
@@ -1660,6 +1679,11 @@
                 if (syncData.type === 'presence') {
                   state.activeUsers[syncData.clientId] = Date.now();
                   updateActiveUsersCount();
+                } else if (syncData.type === 'presence_offline') {
+                  if (syncData.clientId && syncData.clientId !== state.clientId) {
+                    delete state.activeUsers[syncData.clientId];
+                    updateActiveUsersCount();
+                  }
                 } else if (syncData.type === 'new_sensor_record') {
                   if (syncData.senderId !== state.clientId && syncData.record && typeof SensorHistoryManager !== 'undefined') {
                     SensorHistoryManager.onRemoteRecordReceived(syncData.record);
@@ -1806,11 +1830,12 @@
     const fanNames = ['AUTO', 'LOW', 'MEDIUM', 'HIGH'];
     const summary = `Power=${p ? 'ON' : 'OFF'} Temp=${t}°C Mode=AUTO Fan=${fanNames[f]}`;
 
-    // Reset user pending modification flags after sending command
-    state.userModifiedPower = false;
-    state.userModifiedMode = false;
-    state.userModifiedFan = false;
-    state.userModifiedTemp = false;
+    // Maintain optimistic lock window (4.5s) to prevent in-flight status packets from bouncing state
+    const lockUntil = Date.now() + 4500;
+    if (state.userModifiedPower) state.userModifiedPowerUntil = Math.max(state.userModifiedPowerUntil || 0, lockUntil);
+    if (state.userModifiedTemp) state.userModifiedTempUntil = Math.max(state.userModifiedTempUntil || 0, lockUntil);
+    if (state.userModifiedMode) state.userModifiedModeUntil = Math.max(state.userModifiedModeUntil || 0, lockUntil);
+    if (state.userModifiedFan) state.userModifiedFanUntil = Math.max(state.userModifiedFanUntil || 0, lockUntil);
 
     if (state.mqttClient && state.mqttClient.connected) {
       state.mqttClient.publish(CONFIG.topicControl, payloadStr, { qos: 1 });
@@ -1842,7 +1867,7 @@
     return errors;
   }
 
-  function startIrTransmissionLock(durationMs = 5500) {
+  function startIrTransmissionLock(durationMs = 2000) {
     state.irTransmitting = true;
     updateTempControlButtonsLock();
 
@@ -1851,7 +1876,7 @@
       state.irTransmitting = false;
       state.irTimer = null;
       updateTempControlButtonsLock();
-      showToast('info', '✅ ยิงสัญญาณ IR ครบ 10 รอบแล้ว — สามารถปรับอุณหภูมิใหม่ได้');
+      showToast('info', '✅ ยิงสัญญาณ IR ครบ 5 ครั้ง (1 Scan) เรียบร้อยแล้ว — สามารถปรับอุณหภูมิใหม่ได้');
     }, durationMs);
   }
 
@@ -1899,7 +1924,7 @@
       return;
     }
     if (state.irTransmitting) {
-      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (10 รอบ)... กรุณารอให้สัญญาณยิงครบ 10 รอบก่อนส่งคำสั่งใหม่');
+      showToast('warning', '⏳ กำลังยิงสัญญาณ IR (5 ครั้ง)... กรุณารอให้สัญญาณยิงครบ 5 ครั้งก่อนส่งคำสั่งใหม่');
       return;
     }
 
@@ -1915,12 +1940,12 @@
     const fan = state.acFan;
 
     if (isRunning) {
-      // อยู่ในช่วงเวลาทำงานและเครื่องปรับอากาศกำลังทำงาน -> ส่ง mqtt_send = 1 เพื่อยิง IR 10 รอบเปลี่ยนอุณหภูมิเครื่องปรับอากาศจริง
+      // อยู่ในช่วงเวลาทำงานและเครื่องปรับอากาศกำลังทำงาน -> ส่ง mqtt_send = 1 เพื่อยิง IR 5 ครั้ง (1 Scan)เปลี่ยนอุณหภูมิเครื่องปรับอากาศจริง
       const success = sendMqttPayload(1, temp, mode, fan, 0, 0, 1, 0);
       if (success) {
-        startIrTransmissionLock(5500);
-        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 10 รอบ...)`);
-        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C — กำลังยิง IR 10 รอบ`);
+        startIrTransmissionLock(2000);
+        showToast('success', `📡 ส่งค่าอุณหภูมิ ${temp}°C สำเร็จ (กำลังยิง IR 5 ครั้ง / 1 Scan...)`);
+        addLog('success', `[MQTT] ส่งค่าอุณหภูมิ ${temp}°C — กำลังยิง IR 5 ครั้ง (1 Scan)`);
       }
     } else {
       // อยู่ในช่วงเวลาทำงานแต่เครื่องยังไม่ได้รัน
@@ -2016,12 +2041,32 @@
         updateSystemState('idle');
       }
     } else if (isPlcRed) {
-      // Hardware Red Lamp is Active on PLC (M2/M12 timeout / stop lock)
-      if (state.systemState !== 'timeout') {
-        updateSystemState('timeout');
+      if (state.scheduleMode === 'auto' && state.systemState !== 'stopped') {
+        // ในโหมด AUTO: เมื่อครบเวลา 17:00 จะไม่ล็อก TIMEOUT แต่จะรีเซทเป็น READY (รอนอกเวลาเริ่มใหม่วันพรุ่งนี้)
+        const nowDate = new Date();
+        const curMins = nowDate.getHours() * 60 + nowDate.getMinutes();
+        const inAutoTime = (curMins >= 8 * 60 && curMins < 17 * 60);
+        if (!inAutoTime) {
+          if (state.systemState !== 'ready') {
+            updateSystemState('ready');
+          }
+          state.acOn = false;
+          state.acPower = 0;
+        } else {
+          if (state.systemState !== 'timeout') {
+            updateSystemState('timeout');
+          }
+          state.acOn = false;
+          state.acPower = 0;
+        }
+      } else {
+        // Hardware Red Lamp is Active on PLC (M2/M12 timeout / stop lock)
+        if (state.systemState !== 'timeout') {
+          updateSystemState('timeout');
+        }
+        state.acOn = false;
+        state.acPower = 0;
       }
-      state.acOn = false;
-      state.acPower = 0;
     } else if (isPlcRunning) {
       // Machine is Running (Green Light Active)
       if (state.systemState !== 'running') {
@@ -2084,24 +2129,35 @@
 
     // In NONE mode, keep inputs blank / empty as requested by user
     if (state.scheduleMode !== 'none') {
-      if (mqttData.power !== undefined && now > state.userModifiedPowerUntil && !state.userModifiedPower) {
-        state.acPower = Number(mqttData.power);
-        state.acOn = (state.acPower === 1);
-        updateControlButtons();
+      if (mqttData.power !== undefined) {
+        const p = Number(mqttData.power);
+        if (p === state.acPower) {
+          state.userModifiedPower = false;
+        }
+        if (now > state.userModifiedPowerUntil && !state.userModifiedPower) {
+          state.acPower = p;
+          state.acOn = (state.acPower === 1);
+          updateControlButtons();
+        }
       }
 
-      if (mqttData.temperature !== undefined && now > state.userModifiedTempUntil && !state.userModifiedTemp) {
+      if (mqttData.temperature !== undefined) {
         const t = parseFloat(mqttData.temperature);
         if (!isNaN(t) && t >= 18 && t <= 27) {
-          state.targetTemp = t;
-          if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
-            DOM.targetTemp.value = t;
+          if (t === state.targetTemp) {
+            state.userModifiedTemp = false;
           }
-          document.querySelectorAll('.temp-chip').forEach((chip) => {
-            const chipVal = parseFloat(chip.getAttribute('data-temp'));
-            chip.classList.toggle('temp-chip--active', chipVal === t);
-          });
-          updateMqttTempDisplay();
+          if (now > state.userModifiedTempUntil && !state.userModifiedTemp) {
+            state.targetTemp = t;
+            if (DOM.targetTemp && document.activeElement !== DOM.targetTemp) {
+              DOM.targetTemp.value = t;
+            }
+            document.querySelectorAll('.temp-chip').forEach((chip) => {
+              const chipVal = parseFloat(chip.getAttribute('data-temp'));
+              chip.classList.toggle('temp-chip--active', chipVal === t);
+            });
+            updateMqttTempDisplay();
+          }
         }
       }
 
@@ -2333,28 +2389,31 @@
 
     const temp = parseFloat(Number(value).toFixed(1));
 
-    // กรองค่าตกฮวบชั่วคราว (เช่น 0.0°C จากสายเซนเซอร์หลวม/PLC Analog Scan หลุด/ยังไม่พร้อม) ให้คงค่าเดิมไว้ไม่ให้ตัวเลขกระพริบ
-    if (temp <= 0.0) {
+    // กรองค่าตกฮวบชั่วคราว (เช่น <= 0.0°C หรือ > 99.0°C จากสายเซนเซอร์หลวม/PLC Analog Scan หลุด) ให้คงค่าเดิมไว้ไม่ให้ตัวเลขกระพริบ
+    if (temp <= 0.0 || temp > 99.0) {
       if (state.sensors[`temp${index}`] != null && state.sensors[`temp${index}`] > 0) {
         return; // คงค่าเดิมที่ถูกต้องไว้
       }
-      return; // หากเริ่มต้นยังไม่มีค่า ให้รอค่าจริงที่ > 0
+      return; // หากเริ่มต้นยังไม่มีค่า ให้รอค่าจริงที่ถูกต้อง
     }
 
     state.sensors[`temp${index}`] = temp;
 
-    tempEl.textContent = temp.toFixed(1);
+    const formattedTemp = temp.toFixed(1);
+    if (tempEl.textContent !== formattedTemp) {
+      tempEl.textContent = formattedTemp;
+    }
 
     const pct = Math.min(Math.max(temp / 50, 0), 1);
-    progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
+    const newOffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
+    if (progressEl.style.strokeDashoffset !== newOffset) {
+      progressEl.style.strokeDashoffset = newOffset;
+    }
 
-    cardEl.classList.remove('sensor-card--cool', 'sensor-card--warm', 'sensor-card--hot', 'sensor-card--offline');
-    if (temp < 24) {
-      cardEl.classList.add('sensor-card--cool');
-    } else if (temp < 30) {
-      cardEl.classList.add('sensor-card--warm');
-    } else {
-      cardEl.classList.add('sensor-card--hot');
+    const targetClass = (temp < 24) ? 'sensor-card--cool' : (temp < 30) ? 'sensor-card--warm' : 'sensor-card--hot';
+    if (!cardEl.classList.contains(targetClass)) {
+      cardEl.classList.remove('sensor-card--cool', 'sensor-card--warm', 'sensor-card--hot', 'sensor-card--offline');
+      cardEl.classList.add(targetClass);
     }
   }
 
@@ -2373,22 +2432,25 @@
     state.sensors.lux = lux;
     state.sensors.d10 = lux;
 
-    luxEl.textContent = lux.toLocaleString();
+    const formattedLux = lux.toLocaleString();
+    if (luxEl.textContent !== formattedLux) {
+      luxEl.textContent = formattedLux;
+    }
 
     if (progressEl) {
       // Progress ring scale: 0 - 25,000 Lux (TSL2591 Digital Lux Sensor)
       const maxScale = 25000;
       const pct = Math.min(Math.max(lux / maxScale, 0), 1);
-      progressEl.style.strokeDashoffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
+      const newOffset = String(SENSOR_RING_CIRCUMFERENCE * (1 - pct));
+      if (progressEl.style.strokeDashoffset !== newOffset) {
+        progressEl.style.strokeDashoffset = newOffset;
+      }
     }
 
-    cardEl.classList.remove('sensor-card--lux-dim', 'sensor-card--lux-normal', 'sensor-card--lux-bright', 'sensor-card--offline');
-    if (lux < 50) {
-      cardEl.classList.add('sensor-card--lux-dim');
-    } else if (lux < 500) {
-      cardEl.classList.add('sensor-card--lux-normal');
-    } else {
-      cardEl.classList.add('sensor-card--lux-bright');
+    const targetLuxClass = (lux < 50) ? 'sensor-card--lux-dim' : (lux < 500) ? 'sensor-card--lux-normal' : 'sensor-card--lux-bright';
+    if (!cardEl.classList.contains(targetLuxClass)) {
+      cardEl.classList.remove('sensor-card--lux-dim', 'sensor-card--lux-normal', 'sensor-card--lux-bright', 'sensor-card--offline');
+      cardEl.classList.add(targetLuxClass);
     }
   }
 
@@ -2444,20 +2506,25 @@
           DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--active';
         }
       } else if (nextState === 'ready') {
-        const onT = state.schedule.onTime || DOM.onTime?.value || '';
-        const onD = state.schedule.onDate || DOM.onDate?.value || '';
-        const todayIso = getTodayIso();
-        const onIso = parseThaiDateToIso(onD);
-        let timeText = '';
-        if (onT) {
-          if (onIso && onIso > todayIso) {
-            timeText = ` (รอเปิด: ${formatDisplayDate(onD)} ${onT})`;
-          } else {
-            timeText = ` (รอถึงเวลา ${onT})`;
+        if (state.scheduleMode === 'auto') {
+          DOM.scheduleStatusTag.textContent = '🔄 โหมด AUTO: ทำงานทุกวัน (08:00 - 17:00) — สแตนด์บายรอนอกเวลา / เริ่มใหม่อัตโนมัติวันพรุ่งนี้ 08:00 น.';
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--ready';
+        } else {
+          const onT = state.schedule.onTime || DOM.onTime?.value || '';
+          const onD = state.schedule.onDate || DOM.onDate?.value || '';
+          const todayIso = getTodayIso();
+          const onIso = parseThaiDateToIso(onD);
+          let timeText = '';
+          if (onT) {
+            if (onIso && onIso > todayIso) {
+              timeText = ` (รอเปิด: ${formatDisplayDate(onD)} ${onT})`;
+            } else {
+              timeText = ` (รอถึงเวลา ${onT})`;
+            }
           }
+          DOM.scheduleStatusTag.textContent = `⚡ ตั้งค่าล่วงหน้าแล้ว — รอถึงเวลาเริ่ม${timeText}`;
+          DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--ready';
         }
-        DOM.scheduleStatusTag.textContent = `⚡ ตั้งค่าล่วงหน้าแล้ว — รอถึงเวลาเริ่ม${timeText}`;
-        DOM.scheduleStatusTag.className = 'schedule-status-tag schedule-status-tag--ready';
       } else {
         if (state.scheduleMode === 'none') {
           DOM.scheduleStatusTag.textContent = '⚡ โหมด NONE : กรุณาสลับโหมดการทำงาน (AUTO / MANUAL)';
@@ -2489,7 +2556,11 @@
               timeText = ` (รอถึงเวลา ${onT})`;
             }
           }
-          DOM.currentStateBadge.textContent = `Step 2: READY (พร้อมทำงาน)${timeText}`;
+          if (state.scheduleMode === 'auto') {
+            DOM.currentStateBadge.textContent = 'Step 2: READY (โหมด AUTO — รอนอกเวลาเริ่มทำงานใหม่วันพรุ่งนี้ 08:00 น.)';
+          } else {
+            DOM.currentStateBadge.textContent = `Step 2: READY (พร้อมทำงาน)${timeText}`;
+          }
           DOM.currentStateBadge.className = 'state-badge state-badge--ready';
         }
         break;
@@ -2890,7 +2961,7 @@
       state.acOn = true;
       updateSystemState('running');
       sendMqttPayload(1, targetTemp, 0, state.acFan, 0, 0, 0, 0, 1);
-      startIrTransmissionLock(5500);
+      startIrTransmissionLock(2000);
       showToast('success', `${modeLabel} ถึงเวลาเริ่มพอดี — เปิดเครื่องปรับอากาศและยิงสัญญาณ IR (${targetTemp}°C)`);
     } else {
       state.acOn = false;
@@ -2964,13 +3035,16 @@
     state.schedule.offTime = offTimeVal;
     state.schedule.enabled = true;
 
-    // กดเริ่มทำงาน -> ส่งคำสั่งเปิดเครื่องปรับอากาศ M5=ON และ D10=1, D11=Temp, ยิง IR 10x
+    // กดเริ่มทำงาน -> ส่งคำสั่งเปิดเครื่องปรับอากาศ M5=ON และ D10=1, D11=Temp, ยิง IR 5x (1 Scan)
     state.acOn = true;
-    sendMqttPayload(1, targetTemp, 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 10x)
-    startIrTransmissionLock(5500);
+    state.acPower = 1;
+    state.userModifiedPower = true;
+    state.userModifiedPowerUntil = Date.now() + 4500;
+    sendMqttPayload(1, targetTemp, 0, state.acFan, 0, 0, 0, 0, 1); // start_btn = 1 (Triggers M5 ON & IR 5x)
+    startIrTransmissionLock(2000);
     updateSystemState('running');
     broadcastUiSync('start_ac');
-    addLog('success', `${modeLabel} กดเริ่มทำงาน — สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 10 รอบ...)`);
+    addLog('success', `${modeLabel} กดเริ่มทำงาน — สั่งเปิดเครื่องปรับอากาศสำเร็จ (กำลังยิง IR 5 ครั้ง / 1 Scan...)`);
     showToast('success', `${modeLabel} เริ่มทำงานแล้ว — สั่งเปิดเครื่องปรับอากาศ (${targetTemp}°C)`);
   }
 
@@ -2990,13 +3064,14 @@
 
     state.acOn = false;
     state.acPower = 0;
+    state.userModifiedPower = true;
     state.userActionUntil = Date.now() + 5000;
     state.userModifiedPowerUntil = Date.now() + 5000;
     updateSystemState('stopped');
 
     // ส่งคำสั่งหยุด (stop_btn = 1) และยิง IR ปิดแอร์ 10 รอบ
     sendMqttPayload(0, getValidTargetTemp(), 0, state.acFan, 0, 0, 0, 1, 0);
-    startIrTransmissionLock(5500);
+    startIrTransmissionLock(2000);
 
     const modeLabel = (state.scheduleMode === 'auto') ? '[AUTO]' : '[MANUAL]';
     addLog('warning', `${modeLabel} กดปุ่ม STOP — สั่งหยุดการทำงานและยิงสัญญาณ IR ปิดแอร์ (ต้องกดรีเซทเท่านั้น)`);

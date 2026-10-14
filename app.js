@@ -1655,7 +1655,7 @@
               if (msgStr) {
                 const histData = JSON.parse(msgStr);
                 if (histData && Array.isArray(histData.records) && typeof SensorHistoryManager !== 'undefined') {
-                  SensorHistoryManager.mergeRemoteRecords(histData.records);
+                  SensorHistoryManager.mergeRemoteRecords(histData.records, histData.lastLogTime);
                 }
               }
             } catch (e) {
@@ -1686,7 +1686,7 @@
                   }
                 } else if (syncData.type === 'new_sensor_record') {
                   if (syncData.senderId !== state.clientId && syncData.record && typeof SensorHistoryManager !== 'undefined') {
-                    SensorHistoryManager.onRemoteRecordReceived(syncData.record);
+                    SensorHistoryManager.onRemoteRecordReceived(syncData.record, syncData.lastLogTime);
                   }
                 } else if (syncData.type === 'clear_sensor_history') {
                   if (typeof SensorHistoryManager !== 'undefined') {
@@ -3309,7 +3309,7 @@
   // ============================================================
   //  SENSOR HISTORY MANAGER (1-HOUR INTERVAL & 30-DAY PURGE)
   //  Independent Telemetry Logger & Visualizer (Read-Only Observer)
-  //  บันทึกข้อมูลทุก 1 ชั่วโมง เฉพาะช่วงเวลา 08:00 - 20:00 น. (ถึง 2 ทุ่ม)
+  //  บันทึกข้อมูลทุก 1 ชั่วโมง เฉพาะช่วงเวลา 05:00 - 20:00 น. (ตี 5 ถึง 2 ทุ่ม)
   //  Does NOT touch or modify AC control system / PLC registers
   // ============================================================
   const SensorHistoryManager = {
@@ -3324,6 +3324,9 @@
     db: null,
     records: [],
     lastLogTime: 0,
+    isReady: false,
+    syncGraceUntil: 0,
+    _isLoggingSnapshot: false,
     currentRange: '24h',
     customStart: '',
     customEnd: '',
@@ -3345,6 +3348,9 @@
     },
 
     async init() {
+      this.isReady = false;
+      this.syncGraceUntil = Date.now() + 3000; // ให้เวลา 3 วินาทีแรกเชื่อมต่อและดึง retained history จากคลาวด์ก่อนเริ่ม auto-log
+
       const savedLast = localStorage.getItem(this.LAST_LOG_KEY);
       this.lastLogTime = savedLast ? parseInt(savedLast, 10) : 0;
 
@@ -3353,16 +3359,17 @@
       await this.pruneExpiredRecords();
       await this.sanitizeDummyRecords();
 
-      if (this.records.length === 0) {
-        this.lastLogTime = 0;
-        try { localStorage.setItem(this.LAST_LOG_KEY, '0'); } catch (e) {}
-      } else {
-        this.lastLogTime = Math.max(this.lastLogTime, this.records[this.records.length - 1].timestamp);
+      if (this.records.length > 0) {
+        const latestTs = this.records[this.records.length - 1].timestamp;
+        this.lastLogTime = Math.max(this.lastLogTime || 0, latestTs);
+        try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
       }
 
+      this.isReady = true;
       this.bindUI();
       this.startTicker();
       this.render();
+      this.updateCountdownUI();
       this.updateCloudSyncStatus('synced', 'พร้อมซิงค์คลาวด์');
     },
 
@@ -3551,74 +3558,103 @@
     },
 
     async logCurrentSnapshot(source = 'manual') {
-      const now = new Date();
-      const timestamp = now.getTime();
-      const vals = this.getCurrentSensorValues();
+      if (this._isLoggingSnapshot) return;
+      this._isLoggingSnapshot = true;
+      try {
+        const now = new Date();
+        const timestamp = now.getTime();
+        const vals = this.getCurrentSensorValues();
 
-      if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
-        if (source === 'manual') {
-          showToast('warning', 'ยังไม่ได้รับข้อมูลเซนเซอร์จริงจาก ESP32 / PLC กรุณารอสักครู่');
-          addLog('warning', '[ประวัติเซนเซอร์] ไม่สามารถบันทึกได้เนื่องจากยังไม่มีข้อมูลเซนเซอร์จริง');
+        if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
+          if (source === 'manual') {
+            showToast('warning', 'ยังไม่ได้รับข้อมูลเซนเซอร์จริงจาก ESP32 / PLC กรุณารอสักครู่');
+            addLog('warning', '[ประวัติเซนเซอร์] ไม่สามารถบันทึกได้เนื่องจากยังไม่มีข้อมูลเซนเซอร์จริง');
+          }
+          return;
         }
-        return;
-      }
 
-      const dd = String(now.getDate()).padStart(2, '0');
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const yyyy = now.getFullYear();
-      const dateStr = `${dd}/${mm}/${yyyy}`;
+        // ป้องกันการบันทึกซ้ำซ้อนภายใน 60 วินาทีสำหรับระบบอัตโนมัติ
+        if (source === 'auto' && this.lastLogTime > 0 && (timestamp - this.lastLogTime < 60000)) {
+          return;
+        }
 
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mi = String(now.getMinutes()).padStart(2, '0');
-      const ss = String(now.getSeconds()).padStart(2, '0');
-      const timeStr = `${hh}:${mi}:${ss}`;
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yyyy = now.getFullYear();
+        const dateStr = `${dd}/${mm}/${yyyy}`;
 
-      const rec = {
-        timestamp,
-        iso: now.toISOString(),
-        dateStr,
-        timeStr,
-        temp1: vals.temp1,
-        temp2: vals.temp2,
-        temp3: vals.temp3,
-        lux: vals.lux,
-        source,
-      };
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const timeStr = `${hh}:${mi}:${ss}`;
 
-      await this.saveRecord(rec);
-      await this.pruneExpiredRecords();
+        const rec = {
+          timestamp,
+          iso: now.toISOString(),
+          dateStr,
+          timeStr,
+          temp1: vals.temp1,
+          temp2: vals.temp2,
+          temp3: vals.temp3,
+          lux: vals.lux,
+          source,
+        };
 
-      this.lastLogTime = timestamp;
-      try { localStorage.setItem(this.LAST_LOG_KEY, String(timestamp)); } catch (e) { }
+        this.lastLogTime = timestamp;
+        try { localStorage.setItem(this.LAST_LOG_KEY, String(timestamp)); } catch (e) { }
 
-      this.render();
-      addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ 1 ชั่วโมง' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
+        await this.saveRecord(rec);
+        await this.pruneExpiredRecords();
 
-      if (source === 'manual') {
-        showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
+        this.render();
+        this.updateCountdownUI();
+        addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ 1 ชั่วโมง' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
+
+        if (source === 'manual') {
+          showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
+        }
+      } finally {
+        this._isLoggingSnapshot = false;
       }
     },
 
     isLoggingHours(date = new Date()) {
       const curMins = date.getHours() * 60 + date.getMinutes();
-      // บันทึกเฉพาะช่วงเวลาไม่เกิน 2 ทุ่ม (08:00 - 20:00 น.)
-      return (curMins >= 8 * 60 && curMins <= 20 * 60);
+      // บันทึกเฉพาะช่วงเวลา ตี 5 ถึง 2 ทุ่ม (05:00 - 20:00 น.)
+      return (curMins >= 5 * 60 && curMins <= 20 * 60);
     },
 
     checkAndAutoLog(isInit = false) {
+      // 1. ต้องผ่านการเริ่มต้นระบบ (isReady) และพ้นระยะ sync grace ก่อน
+      if (!this.isReady || Date.now() < this.syncGraceUntil) return;
+
+      // 2. อยู่ในช่วงเวลาที่อนุญาตให้บันทึก (05:00 - 20:00 น.) หรือไม่
       if (!this.isLoggingHours(new Date())) {
-        return; // นอกเวลา (หลัง 2 ทุ่ม / 20:00 น. หรือก่อน 08:00 น.) หยุดบันทึกอัตโนมัติ
+        return; // นอกเวลา (หลัง 2 ทุ่ม / 20:00 น. หรือก่อน ตี 5 / 05:00 น.) หยุดบันทึกอัตโนมัติ
       }
+
       const now = Date.now();
       const vals = this.getCurrentSensorValues();
       if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
         return;
       }
+
+      // 3. ป้องกันการบันทึกเมื่อรีเว็บ:
+      // ถ้ามีประวัติเดิมในระบบอยู่แล้ว ให้ยึดเวลาล่าสุดเดิมเป็น lastLogTime ทันที ห้ามสร้างค่าใหม่
+      if (this.lastLogTime === 0 && this.records.length > 0) {
+        this.lastLogTime = this.records[this.records.length - 1].timestamp;
+        try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+      }
+
+      // ถ้าไม่มีข้อมูลประวัติใดๆ เลยทั้งระบบ (0 รายการจริงๆ) และพ้นระยะ 3 วินาทีแรก
       if (this.lastLogTime === 0) {
-        if (isInit) return;
+        this.lastLogTime = now;
+        try { localStorage.setItem(this.LAST_LOG_KEY, String(now)); } catch (e) {}
         this.logCurrentSnapshot('auto');
         return;
       }
+
+      // 4. บันทึกเฉพาะเมื่อเวลาผ่านไปครบ 1 ชั่วโมงเต็ม (3,600,000 ms) จากรอบล่าสุด
       const elapsed = now - this.lastLogTime;
       if (elapsed >= this.LOG_INTERVAL_MS) {
         this.logCurrentSnapshot('auto');
@@ -3646,7 +3682,10 @@
         });
       }
 
-      this.checkAndAutoLog(false);
+      // ตรวจสอบและบันทึกอัตโนมัติเฉพาะเมื่อระบบพร้อมและพ้นระยะเริ่มต้น
+      if (this.isReady && Date.now() >= this.syncGraceUntil) {
+        this.checkAndAutoLog(false);
+      }
       this.updateCountdownUI();
 
       // หน่วงเวลาการคำนวณสถิติหนักๆ ให้ทำไม่เกินทุก 3 วินาที เพื่อไม่ให้เบราว์เซอร์ค้างเวลาข้อมูล MQTT เข้ามาเร็ว
@@ -3663,7 +3702,8 @@
         state.mqttClient.publish(CONFIG.topicSync, JSON.stringify({
           type: 'new_sensor_record',
           senderId: state.clientId,
-          record: record
+          record: record,
+          lastLogTime: this.lastLogTime
         }), { qos: 1 });
       } catch (e) { }
     },
@@ -3684,6 +3724,7 @@
         }));
         const payload = JSON.stringify({
           updatedAt: Date.now(),
+          lastLogTime: this.lastLogTime,
           senderId: state.clientId,
           records: compactRecords
         });
@@ -3694,12 +3735,15 @@
       }
     },
 
-    onRemoteRecordReceived(record) {
+    onRemoteRecordReceived(record, remoteLastLogTime) {
       if (!record || !record.timestamp) return;
-      if (this.records.some(r => r.timestamp === record.timestamp)) return;
-      this.records.push(record);
-      this.records.sort((a, b) => a.timestamp - b.timestamp);
-      this.lastLogTime = Math.max(this.lastLogTime, record.timestamp);
+      const exists = this.records.some(r => r.timestamp === record.timestamp);
+      if (!exists) {
+        this.records.push(record);
+        this.records.sort((a, b) => a.timestamp - b.timestamp);
+      }
+      const refTime = (remoteLastLogTime && !isNaN(remoteLastLogTime)) ? Number(remoteLastLogTime) : record.timestamp;
+      this.lastLogTime = Math.max(this.lastLogTime || 0, refTime);
       try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
 
       if (this.db) {
@@ -3711,6 +3755,7 @@
       }
       this.syncFallback();
       this.render();
+      this.updateCountdownUI();
       this.updateCloudSyncStatus('synced', `รับข้อมูลจากเครื่องอื่น (${this.records.length} รายการ)`);
       addLog('info', `[คลาวด์ซิงค์] ได้รับข้อมูลเซนเซอร์ใหม่จากอุปกรณ์อื่น: S1=${record.temp1}°C, S2=${record.temp2}°C, S3=${record.temp3}°C, Lux=${record.lux}`);
     },
@@ -3731,11 +3776,12 @@
         } catch (e) {}
       }
       this.render();
+      this.updateCountdownUI();
       this.updateCloudSyncStatus('synced', 'ล้างข้อมูลตรงกันทุกเครื่อง');
       addLog('info', '[คลาวด์ซิงค์] อุปกรณ์อื่นทำการล้างประวัติข้อมูลเซนเซอร์');
     },
 
-    mergeRemoteRecords(incomingList) {
+    mergeRemoteRecords(incomingList, remoteLastLogTime) {
       if (!Array.isArray(incomingList) || incomingList.length === 0) return;
       const existingTimestamps = new Set(this.records.map(r => r.timestamp));
       let added = 0;
@@ -3746,12 +3792,21 @@
           added++;
         }
       }
+      this.records.sort((a, b) => a.timestamp - b.timestamp);
+
+      let maxTs = this.lastLogTime || 0;
+      if (this.records.length > 0) {
+        maxTs = Math.max(maxTs, this.records[this.records.length - 1].timestamp);
+      }
+      if (remoteLastLogTime && !isNaN(remoteLastLogTime)) {
+        maxTs = Math.max(maxTs, Number(remoteLastLogTime));
+      }
+      if (maxTs > 0) {
+        this.lastLogTime = maxTs;
+        try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+      }
+
       if (added > 0) {
-        this.records.sort((a, b) => a.timestamp - b.timestamp);
-        if (this.records.length > 0) {
-          this.lastLogTime = Math.max(this.lastLogTime, this.records[this.records.length - 1].timestamp);
-          try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
-        }
         this.syncFallback();
         if (this.db) {
           try {
@@ -3761,9 +3816,11 @@
           } catch (e) {}
         }
         this.render();
+        this.updateCountdownUI();
         this.updateCloudSyncStatus('synced', `ซิงค์สำเร็จ (+${added} รวม ${this.records.length} รายการ)`);
         addLog('info', `[คลาวด์ซิงค์] ซิงค์ประวัติเซนเซอร์ข้ามเครื่องสำเร็จ (+${added} รายการ รวม ${this.records.length} รายการ)`);
       } else {
+        this.updateCountdownUI();
         this.updateCloudSyncStatus('synced', `ข้อมูลตรงกันแล้ว (${this.records.length} รายการ)`);
       }
     },
@@ -3780,6 +3837,7 @@
 
     startTicker() {
       if (this.tickerTimer) clearInterval(this.tickerTimer);
+      this.updateCountdownUI();
       this.tickerTimer = setInterval(() => {
         this.checkAndAutoLog(false);
         this.updateCountdownUI();
@@ -3808,13 +3866,20 @@
       if (countdownEl) {
         const nowDate = new Date();
         if (!this.isLoggingHours(nowDate)) {
-          countdownEl.textContent = 'พักบันทึก (เกิน 2 ทุ่ม)';
+          countdownEl.textContent = 'พักบันทึก (ตี 5 - 2 ทุ่ม)';
           return;
         }
+
         if (this.lastLogTime === 0) {
-          countdownEl.textContent = 'พร้อมบันทึก';
-          return;
+          if (this.records.length > 0) {
+            this.lastLogTime = this.records[this.records.length - 1].timestamp;
+            try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+          } else {
+            countdownEl.textContent = 'พร้อมบันทึก';
+            return;
+          }
         }
+
         const nextTime = this.lastLogTime + this.LOG_INTERVAL_MS;
         const diff = Math.max(0, nextTime - now);
         const mins = Math.floor(diff / 60000);
@@ -3984,6 +4049,29 @@
       }
     },
 
+    getChartPadding(width) {
+      const isMobile = width < 520;
+      const hasLux = this.activeSensors.lux && this.chartMode !== 'temp';
+      const hasTemp = this.chartMode !== 'lux';
+      return {
+        top: isMobile ? 18 : 25,
+        right: hasLux ? (isMobile ? 42 : 62) : 18,
+        bottom: isMobile ? 32 : 40,
+        left: hasTemp ? (isMobile ? 42 : 55) : 18,
+      };
+    },
+
+    downsampleRecords(records, maxPoints) {
+      if (!records || records.length <= maxPoints) return records;
+      const step = (records.length - 1) / (maxPoints - 1);
+      const sampled = [];
+      for (let i = 0; i < maxPoints; i++) {
+        const idx = Math.min(records.length - 1, Math.round(i * step));
+        sampled.push(records[idx]);
+      }
+      return sampled;
+    },
+
     renderChart(filtered) {
       if (!this.canvas) {
         this.canvas = document.getElementById('historyCanvas');
@@ -4033,16 +4121,21 @@
         this.ctx.clearRect(0, 0, width, height);
       }
 
-      const padding = { top: 25, right: 65, bottom: 40, left: 55 };
+      const isMobile = width < 520;
+      const padding = this.getChartPadding(width);
       const plotW = width - padding.left - padding.right;
       const plotH = height - padding.top - padding.bottom;
 
       if (plotW <= 0 || plotH <= 0) return;
 
+      // ปรับลดความถี่ของจุดข้อมูลตามขนาดหน้าจอ (มือถือ vs คอม) ไม่ให้เส้นกราฟถี่หรือเบียดแน่นเกินไป
+      const maxDisplayPts = isMobile ? 32 : (width < 900 ? 50 : 75);
+      const chartPoints = this.downsampleRecords(filtered, maxDisplayPts);
+
       // Min/Max for Temp
       let allTemps = [];
       if (this.chartMode !== 'lux') {
-        filtered.forEach((r) => {
+        chartPoints.forEach((r) => {
           if (this.activeSensors.s1 && r.temp1 != null) allTemps.push(r.temp1);
           if (this.activeSensors.s2 && r.temp2 != null) allTemps.push(r.temp2);
           if (this.activeSensors.s3 && r.temp3 != null) allTemps.push(r.temp3);
@@ -4055,7 +4148,7 @@
       // Min/Max for Lux
       let allLux = [];
       if (this.chartMode !== 'temp' && this.activeSensors.lux) {
-        filtered.forEach((r) => {
+        chartPoints.forEach((r) => {
           if (r.lux != null) allLux.push(r.lux);
         });
       }
@@ -4063,19 +4156,26 @@
       maxLux = Math.ceil(Math.max(500, maxLux * 1.1) / 100) * 100;
       const minLux = 0;
 
-      // Draw Grid & Y-Axis Labels
-      this.ctx.strokeStyle = '#e2e8f0';
-      this.ctx.lineWidth = 1;
-      this.ctx.font = '11px Prompt, Kanit, sans-serif';
-      this.ctx.fillStyle = '#64748b';
+      // Draw Grid & Y-Axis Labels (ปรับให้ไม่ถี่เกินไป สบายตา)
+      const gridSteps = isMobile ? 3 : 4;
+      this.ctx.font = isMobile ? '10px Prompt, Kanit, sans-serif' : '11px Prompt, Kanit, sans-serif';
 
-      const gridSteps = 5;
       for (let i = 0; i <= gridSteps; i++) {
         const y = padding.top + (plotH * (gridSteps - i)) / gridSteps;
+
+        // เส้นกริดแนวนอนแบบโปร่งบาง
         this.ctx.beginPath();
+        this.ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#f1f5f9';
+        this.ctx.lineWidth = 1;
+        if (i > 0) {
+          this.ctx.setLineDash([4, 4]);
+        } else {
+          this.ctx.setLineDash([]);
+        }
         this.ctx.moveTo(padding.left, y);
         this.ctx.lineTo(padding.left + plotW, y);
         this.ctx.stroke();
+        this.ctx.setLineDash([]);
 
         // Left Temp Axis
         if (this.chartMode !== 'lux') {
@@ -4083,7 +4183,7 @@
           this.ctx.textAlign = 'right';
           this.ctx.textBaseline = 'middle';
           this.ctx.fillStyle = '#0284c7';
-          this.ctx.fillText(`${tVal.toFixed(0)}°C`, padding.left - 8, y);
+          this.ctx.fillText(`${tVal.toFixed(0)}°`, padding.left - (isMobile ? 5 : 8), y);
         }
 
         // Right Lux Axis
@@ -4092,70 +4192,106 @@
           this.ctx.textAlign = 'left';
           this.ctx.textBaseline = 'middle';
           this.ctx.fillStyle = '#b45309';
-          this.ctx.fillText(`${Math.round(lVal)}lx`, padding.left + plotW + 8, y);
+          const luxText = lVal >= 1000 ? `${(lVal / 1000).toFixed(1)}k` : `${Math.round(lVal)}`;
+          this.ctx.fillText(`${luxText}lx`, padding.left + plotW + (isMobile ? 5 : 8), y);
         }
       }
 
       // X-Axis Scale & Labels
-      const minTime = filtered[0].timestamp;
-      const maxTime = filtered[filtered.length - 1].timestamp;
+      const minTime = chartPoints[0].timestamp;
+      const maxTime = chartPoints[chartPoints.length - 1].timestamp;
       const timeSpan = maxTime - minTime || 1;
 
       const getX = (t) => padding.left + ((t - minTime) / timeSpan) * plotW;
       const getYTemp = (temp) => padding.top + plotH - ((temp - minTemp) / (maxTemp - minTemp)) * plotH;
       const getYLux = (lux) => padding.top + plotH - ((lux - minLux) / (maxLux - minLux)) * plotH;
 
-      // Draw X Grid Labels
-      const xLabelCount = Math.min(6, filtered.length);
+      // Draw X Grid Labels (ปรับจำนวนไม่ให้ชนกันทั้งบนคอมและมือถือ)
+      const xLabelCount = isMobile ? Math.min(3, chartPoints.length) : Math.min(5, chartPoints.length);
       this.ctx.fillStyle = '#64748b';
       this.ctx.textAlign = 'center';
       this.ctx.textBaseline = 'top';
 
       for (let i = 0; i < xLabelCount; i++) {
-        const idx = Math.floor((i * (filtered.length - 1)) / (xLabelCount - 1 || 1));
-        const r = filtered[idx];
+        const idx = Math.floor((i * (chartPoints.length - 1)) / (xLabelCount - 1 || 1));
+        const r = chartPoints[idx];
         const x = getX(r.timestamp);
 
         this.ctx.beginPath();
+        this.ctx.strokeStyle = '#cbd5e1';
+        this.ctx.lineWidth = 1;
         this.ctx.moveTo(x, padding.top + plotH);
         this.ctx.lineTo(x, padding.top + plotH + 4);
         this.ctx.stroke();
 
-        const label = (this.currentRange === 'today' || this.currentRange === '24h') ? r.timeStr.substring(0, 5) : `${r.dateStr.substring(0, 5)} ${r.timeStr.substring(0, 5)}`;
-        this.ctx.fillText(label, x, padding.top + plotH + 8);
+        let label;
+        if (this.currentRange === 'today' || this.currentRange === '24h') {
+          label = r.timeStr.substring(0, 5);
+        } else if (isMobile) {
+          label = r.dateStr.substring(0, 5);
+        } else {
+          label = `${r.dateStr.substring(0, 5)} ${r.timeStr.substring(0, 5)}`;
+        }
+        this.ctx.fillText(label, x, padding.top + plotH + 7);
       }
 
-      // Draw Line Series
+      // Draw Smooth Spline Series (เส้นกราฟโค้งมน เนียนตา ไม่ถี่หยาบ)
       const drawLine = (key, color, isLux = false) => {
+        const points = [];
+        chartPoints.forEach((r) => {
+          const val = r[key];
+          if (val != null && !isNaN(val)) {
+            points.push({
+              x: getX(r.timestamp),
+              y: isLux ? getYLux(val) : getYTemp(val),
+              val: val,
+              r: r
+            });
+          }
+        });
+
+        if (points.length === 0) return;
+
         this.ctx.beginPath();
         this.ctx.strokeStyle = color;
         this.ctx.lineWidth = isLux ? 2 : 2.5;
         this.ctx.lineJoin = 'round';
         this.ctx.lineCap = 'round';
 
-        let started = false;
-        filtered.forEach((r) => {
-          const val = r[key];
-          if (val == null || isNaN(val)) return;
-          const x = getX(r.timestamp);
-          const y = isLux ? getYLux(val) : getYTemp(val);
-          if (!started) {
-            this.ctx.moveTo(x, y);
-            started = true;
-          } else {
-            this.ctx.lineTo(x, y);
+        if (points.length === 1) {
+          this.ctx.arc(points[0].x, points[0].y, 3, 0, Math.PI * 2);
+          this.ctx.fillStyle = color;
+          this.ctx.fill();
+          return;
+        }
+
+        // Catmull-Rom to Bezier Smooth Curves (สร้างส่วนโค้งเนียนตา ไม่เป็นรอยหยักถี่)
+        this.ctx.moveTo(points[0].x, points[0].y);
+        if (points.length === 2) {
+          this.ctx.lineTo(points[1].x, points[1].y);
+        } else {
+          for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[i === 0 ? 0 : i - 1];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+            this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
           }
-        });
+        }
         this.ctx.stroke();
 
-        if (filtered.length <= 40) {
-          filtered.forEach((r) => {
-            const val = r[key];
-            if (val == null || isNaN(val)) return;
-            const x = getX(r.timestamp);
-            const y = isLux ? getYLux(val) : getYTemp(val);
+        // วาดจุดเฉพาะเมื่อข้อมูลมีระยะห่างเพียงพอ (ถ้าข้อมูลถี่เกินไปจะไม่วาดจุดทับกัน ให้เส้นกราฟดูโล่งโปร่ง)
+        const avgSpacing = plotW / (points.length || 1);
+        if (points.length <= 10 && avgSpacing >= 40) {
+          points.forEach((p) => {
             this.ctx.beginPath();
-            this.ctx.arc(x, y, 3, 0, Math.PI * 2);
+            this.ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
             this.ctx.fillStyle = '#ffffff';
             this.ctx.fill();
             this.ctx.strokeStyle = color;
@@ -4324,7 +4460,7 @@
         const rawSheetData = [];
         
         rawSheetData.push(['มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตสุรินทร์ — ระบบควบคุมเครื่องปรับอากาศ']);
-        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (บันทึกทุก 1 ชั่วโมง ถึง 20:00 น. ย้อนหลัง 30 วัน)']);
+        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (บันทึกทุก 1 ชั่วโมง ช่วง 05:00 - 20:00 น. ย้อนหลัง 30 วัน)']);
         rawSheetData.push([
           `วันที่ส่งออกข้อมูล: ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH')}`,
           '',
@@ -4650,6 +4786,7 @@
         try {
           const clearPayload = JSON.stringify({
             updatedAt: Date.now(),
+            lastLogTime: 0,
             senderId: state.clientId,
             records: []
           });
@@ -4800,8 +4937,7 @@
             if (filtered.length === 0) return;
 
             const rect = canvasEl.getBoundingClientRect();
-            const mouseX = clientX - rect.left;
-            const padding = { top: 25, right: 65, bottom: 40, left: 55 };
+            const padding = this.getChartPadding(rect.width);
             const plotW = rect.width - padding.left - padding.right;
 
             if (mouseX < padding.left || mouseX > padding.left + plotW) {

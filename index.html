@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20261013_no_avg" />
+  <link rel="stylesheet" href="style.css?v=20261019_lux_condition" />
 </head>
 
 <body>
@@ -113,8 +113,8 @@
               <span class="sensor-card__unit">°C</span>
             </div>
           </div>
-          <div class="sensor-card__label">เซนเซอร์ 2</div>
-          <div class="sensor-card__location">Outdoor (ภายนอก)</div>
+          <div class="sensor-card__label">เซนเซอร์ D1</div>
+          <div class="sensor-card__location">Outdoor (อ่านค่า D1 / D111)</div>
         </div>
         <!-- Sensor 3 (อินเวอร์เตอร์) -->
         <div class="sensor-card" id="sensorCard3">
@@ -143,8 +143,12 @@
               <span class="sensor-card__unit" id="sensorLuxUnit">Lux</span>
             </div>
           </div>
-          <div class="sensor-card__label">ความเข้มแสง</div>
-          <div class="sensor-card__location">ความสว่างโดยรอบ (Ambient)</div>
+          <div class="sensor-card__label">ความเข้มแสง (D10)</div>
+          <div class="sensor-card__location" id="sensorLuxLocation">ความสว่างโดยรอบ (Ambient)</div>
+          <div class="sensor-lux-badge sensor-lux-badge--unknown" id="sensorLuxBadge" title="ระดับความสว่างของแสง">
+            <span class="sensor-lux-badge__icon" id="sensorLuxBadgeIcon">☀️</span>
+            <span class="sensor-lux-badge__text" id="sensorLuxBadgeText">รอรับข้อมูล...</span>
+          </div>
         </div>
       </div>
     </section>
@@ -235,7 +239,7 @@
             <label class="history-toggle-chip history-toggle-chip--s2">
               <input type="checkbox" id="toggleSensor2" checked />
               <span class="history-toggle-dot history-toggle-dot--s2"></span>
-              เซนเซอร์ 2: Outdoor
+              เซนเซอร์ D1: Outdoor
             </label>
             <label class="history-toggle-chip history-toggle-chip--s3">
               <input type="checkbox" id="toggleSensor3" checked />
@@ -280,7 +284,7 @@
             <span class="history-legend-color"></span> เซนเซอร์ 1: Indoor (°C)
           </div>
           <div class="history-legend-item history-legend-item--s2">
-            <span class="history-legend-color"></span> เซนเซอร์ 2: Outdoor (°C)
+            <span class="history-legend-color"></span> เซนเซอร์ D1: Outdoor (°C)
           </div>
           <div class="history-legend-item history-legend-item--s3">
             <span class="history-legend-color"></span> เซนเซอร์ 3: อินเวอร์เตอร์ (°C)
@@ -311,7 +315,7 @@
                 <th>📅 วันที่</th>
                 <th>⏰ เวลา</th>
                 <th class="th--s1">🔵 เซนเซอร์ 1 (Indoor)</th>
-                <th class="th--s2">🟠 เซนเซอร์ 2 (Outdoor)</th>
+                <th class="th--s2">🟠 เซนเซอร์ D1 (Outdoor)</th>
                 <th class="th--s3">🟣 เซนเซอร์ 3 (Inverter)</th>
                 <th class="th--lux">🟡 ความเข้มแสง (Lux)</th>
                 <th>🏷️ บันทึกแบบ</th>
@@ -2038,7 +2042,7 @@
 
   <script src="mqtt.min.js"></script>
   <script src="xlsx.full.min.js"></script>
-  <script src="app.js?v=20261013_smooth_spacious_chart"></script>
+  <script src="app.js?v=20261019_lux_condition_v2"></script>
 </body>
 
 </html>

@@ -200,6 +200,10 @@
     sensorCardLux: document.getElementById('sensorCardLux'),
     sensorLuxVal: document.getElementById('sensorLuxVal'),
     sensorProgressLux: document.getElementById('sensorProgressLux'),
+    sensorLuxLocation: document.getElementById('sensorLuxLocation'),
+    sensorLuxBadge: document.getElementById('sensorLuxBadge'),
+    sensorLuxBadgeIcon: document.getElementById('sensorLuxBadgeIcon'),
+    sensorLuxBadgeText: document.getElementById('sensorLuxBadgeText'),
     tempUpdateBadge: document.getElementById('tempUpdateBadge'),
 
     // Indicators
@@ -2209,9 +2213,22 @@
       };
     }
 
-    // 3 Temperature Sensors Readback (D0-D2)
+    // 3 Temperature Sensors Readback (D0-D2 & D111)
     if (mqttData.temp1 !== undefined) updateSensor(1, parseFloat(mqttData.temp1));
-    if (mqttData.temp2 !== undefined) updateSensor(2, parseFloat(mqttData.temp2));
+
+    // เซนเซอร์ D1: อ่านค่าได้จาก D1, D111, sensor_d1 หรือ temp2 (หากตัวใดตัวหนึ่งมีค่า ให้นำมาแสดงผลทันที)
+    let d1Val = undefined;
+    if (mqttData.d1 !== undefined && !isNaN(parseFloat(mqttData.d1)) && parseFloat(mqttData.d1) > 0) {
+      d1Val = parseFloat(mqttData.d1);
+    } else if (mqttData.d111 !== undefined && !isNaN(parseFloat(mqttData.d111)) && parseFloat(mqttData.d111) > 0) {
+      d1Val = parseFloat(mqttData.d111);
+    } else if (mqttData.sensor_d1 !== undefined && !isNaN(parseFloat(mqttData.sensor_d1)) && parseFloat(mqttData.sensor_d1) > 0) {
+      d1Val = parseFloat(mqttData.sensor_d1);
+    } else if (mqttData.temp2 !== undefined && !isNaN(parseFloat(mqttData.temp2))) {
+      d1Val = parseFloat(mqttData.temp2);
+    }
+    if (d1Val !== undefined) updateSensor(2, d1Val);
+
     if (mqttData.temp3 !== undefined) updateSensor(3, parseFloat(mqttData.temp3));
 
     // Light Sensor Readback from PLC Register D10 (TSL2591)
@@ -2220,10 +2237,10 @@
                    (mqttData.lux !== undefined) ? mqttData.lux :
                    (mqttData.d10_rs485 !== undefined) ? mqttData.d10_rs485 : undefined;
     if (d10Val !== undefined) {
-      updateLuxSensor(parseFloat(d10Val));
+      updateLuxSensor(parseFloat(d10Val), mqttData.lux_condition_th || mqttData.lux_condition);
     }
 
-    if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.temp3 !== undefined || d10Val !== undefined) {
+    if (mqttData.temp1 !== undefined || mqttData.temp2 !== undefined || mqttData.d1 !== undefined || mqttData.d111 !== undefined || mqttData.sensor_d1 !== undefined || mqttData.temp3 !== undefined || d10Val !== undefined) {
       updateTempBadge();
       if (typeof SensorHistoryManager !== 'undefined' && SensorHistoryManager.onTelemetry) {
         SensorHistoryManager.onTelemetry();
@@ -2426,7 +2443,7 @@
   }
 
   // ── Light Intensity Sensor (TSL2591 / PLC Register D10) ──
-  function updateLuxSensor(value) {
+  function updateLuxSensor(value, mqttCondition) {
     const luxEl = DOM.sensorLuxVal;
     const progressEl = DOM.sensorProgressLux;
     const cardEl = DOM.sensorCardLux;
@@ -2455,11 +2472,73 @@
       }
     }
 
-    const targetLuxClass = (lux < 50) ? 'sensor-card--lux-dim' : (lux < 500) ? 'sensor-card--lux-normal' : 'sensor-card--lux-bright';
-    if (!cardEl.classList.contains(targetLuxClass)) {
-      cardEl.classList.remove('sensor-card--lux-dim', 'sensor-card--lux-normal', 'sensor-card--lux-bright', 'sensor-card--offline');
-      cardEl.classList.add(targetLuxClass);
+    // ── แยกแยะระดับสภาพแสงอย่างแม่นยำ (แสงจ้า / แสงปกติ / แสงน้อย / มืดสนิท) ──
+    let levelKey = 'normal';
+    let levelIcon = '⛅';
+    let levelText = 'แสงปกติ';
+    let levelDesc = 'ความสว่างในอาคารระดับปกติ';
+    let targetCardClass = 'sensor-card--lux-normal';
+    let badgeClass = 'sensor-lux-badge--normal';
+
+    if (lux >= 1000 || mqttCondition === 'bright' || mqttCondition === 'แสงจ้า') {
+      levelKey = 'bright';
+      levelIcon = '☀️';
+      levelText = 'แสงจ้า';
+      levelDesc = (lux >= 10000) ? 'แสงแดดจัด / แสงจ้ามาก' : 'แสงจ้า (ความสว่างสูง)';
+      targetCardClass = 'sensor-card--lux-bright';
+      badgeClass = 'sensor-lux-badge--bright';
+    } else if (lux < 10 || mqttCondition === 'dark' || mqttCondition === 'มืดสนิท') {
+      levelKey = 'dark';
+      levelIcon = '🌑';
+      levelText = 'มืดสนิท';
+      levelDesc = 'มืดสนิท (< 10 Lux)';
+      targetCardClass = 'sensor-card--lux-dim';
+      badgeClass = 'sensor-lux-badge--dark';
+    } else if (lux < 100 || mqttCondition === 'dim' || mqttCondition === 'แสงน้อย') {
+      levelKey = 'dim';
+      levelIcon = '🌙';
+      levelText = 'แสงน้อย';
+      levelDesc = 'สภาพแสงน้อย / แสงสลัว';
+      targetCardClass = 'sensor-card--lux-dim';
+      badgeClass = 'sensor-lux-badge--dim';
     }
+
+    // อัปเดต Card Visual Class
+    if (!cardEl.classList.contains(targetCardClass)) {
+      cardEl.classList.remove('sensor-card--lux-dim', 'sensor-card--lux-normal', 'sensor-card--lux-bright', 'sensor-card--offline');
+      cardEl.classList.add(targetCardClass);
+    }
+
+    // อัปเดต Badge แจ้งระดับแสง (☀️ แสงจ้า / ⛅ แสงปกติ / 🌙 แสงน้อย / 🌑 มืดสนิท)
+    if (DOM.sensorLuxBadge) {
+      DOM.sensorLuxBadge.className = `sensor-lux-badge ${badgeClass}`;
+      if (DOM.sensorLuxBadgeIcon) DOM.sensorLuxBadgeIcon.textContent = levelIcon;
+      if (DOM.sensorLuxBadgeText) DOM.sensorLuxBadgeText.textContent = levelText;
+      DOM.sensorLuxBadge.title = `ระดับความสว่าง: ${levelText} (${formattedLux} Lux)`;
+    }
+
+    // อัปเดต Location Subtitle ใต้การ์ด
+    if (DOM.sensorLuxLocation) {
+      DOM.sensorLuxLocation.textContent = `${levelDesc} (${formattedLux} Lux)`;
+    }
+
+    // แจ้งเตือน Toast บนหน้าเว็บเมื่อระดับแสงเปลี่ยน (เช่น สลับเป็นแสงจ้า หรือแสงน้อย) พร้อม Debounce Cooldown
+    if (state.lastLuxLevel && state.lastLuxLevel !== levelKey) {
+      const now = Date.now();
+      if (!state.lastLuxToastTime || (now - state.lastLuxToastTime > 8000)) {
+        state.lastLuxToastTime = now;
+        if (levelKey === 'bright') {
+          showToast('warning', `☀️ ตรวจพบสภาพแสง: แสงจ้า (${formattedLux} Lux)`);
+        } else if (levelKey === 'dim') {
+          showToast('info', `🌙 ตรวจพบสภาพแสง: แสงน้อย (${formattedLux} Lux)`);
+        } else if (levelKey === 'dark') {
+          showToast('info', `🌑 ตรวจพบสภาพแสง: มืดสนิท (${formattedLux} Lux)`);
+        } else if (levelKey === 'normal' && (state.lastLuxLevel === 'bright' || state.lastLuxLevel === 'dim' || state.lastLuxLevel === 'dark')) {
+          showToast('info', `⛅ สภาพแสงกลับสู่ระดับปกติ (${formattedLux} Lux)`);
+        }
+      }
+    }
+    state.lastLuxLevel = levelKey;
   }
 
   function updateTempBadge() {

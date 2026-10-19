@@ -344,6 +344,89 @@ body {
   color: #b45309;
 }
 
+/* ── Lux Condition Status Badge ── */
+.sensor-lux-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sensor-lux-badge__icon {
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-block;
+}
+
+/* ☀️ แสงจ้า (Bright Light) */
+.sensor-lux-badge--bright {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(234, 179, 8, 0.18));
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  color: #fbbf24;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.4);
+  animation: pulse-glow-lux-bright 2.2s infinite alternate ease-in-out;
+}
+
+/* ⛅ แสงปกติ (Normal Light) */
+.sensor-lux-badge--normal {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(245, 158, 11, 0.12));
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  color: #34d399;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+}
+
+/* 🌙 แสงน้อย (Low Light / Dim) */
+.sensor-lux-badge--dim {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(139, 92, 246, 0.18));
+  border: 1px solid rgba(99, 102, 241, 0.6);
+  color: #a5b4fc;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
+  animation: pulse-glow-lux-dim 2.8s infinite alternate ease-in-out;
+}
+
+/* 🌑 มืดสนิท (Pitch Dark) */
+.sensor-lux-badge--dark {
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #94a3b8;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ⏳ รอรับข้อมูล */
+.sensor-lux-badge--unknown {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-muted);
+}
+
+@keyframes pulse-glow-lux-bright {
+  0% {
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.6);
+    border-color: rgba(245, 158, 11, 0.95);
+  }
+}
+
+@keyframes pulse-glow-lux-dim {
+  0% {
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.5);
+  }
+}
+
 /* ══════════════════════════════════════════
    STATUS INDICATORS — 3 lights
    ══════════════════════════════════════════ */

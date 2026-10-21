@@ -3386,16 +3386,17 @@
   }
 
   // ============================================================
-  //  SENSOR HISTORY MANAGER (1-HOUR INTERVAL & 30-DAY PURGE)
+  //  SENSOR HISTORY MANAGER (30-DAY RETENTION)
   //  Independent Telemetry Logger & Visualizer (Read-Only Observer)
-  //  บันทึกข้อมูลทุก 1 ชั่วโมง เฉพาะช่วงเวลา 05:00 - 20:00 น. (ตี 5 ถึง 2 ทุ่ม)
+  //  บันทึกข้อมูลอัตโนมัติอย่างต่อเนื่อง ช่วงเวลา 08:00 - 20:00 น.
+  //  แม้ระบบ Modbus ไม่ทำงาน ก็ยังเก็บบันทึกค่าเซนเซอร์ที่ได้รับเรื่อยๆ
   //  Does NOT touch or modify AC control system / PLC registers
   // ============================================================
   const SensorHistoryManager = {
     DB_NAME: 'AirSensorHistoryDB',
     STORE_NAME: 'sensor_records',
     DB_VERSION: 1,
-    LOG_INTERVAL_MS: 60 * 60 * 1000, // 1 ชั่วโมง (3,600,000 ms)
+    LOG_INTERVAL_MS: 60 * 1000, // บันทึกอัตโนมัติทุก 1 นาที (60,000 ms) เก็บค่าเรื่อยๆ ต่อเนื่อง
     RETENTION_MS: 30 * 24 * 60 * 60 * 1000, // 30 วัน (2,592,000,000 ms)
     STORAGE_KEY: 'aircon_sensor_history_records',
     LAST_LOG_KEY: 'aircon_sensor_last_log_time',
@@ -3687,7 +3688,7 @@
 
         this.render();
         this.updateCountdownUI();
-        addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ 1 ชั่วโมง' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
+        addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
 
         if (source === 'manual') {
           showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
@@ -3699,17 +3700,17 @@
 
     isLoggingHours(date = new Date()) {
       const curMins = date.getHours() * 60 + date.getMinutes();
-      // บันทึกเฉพาะช่วงเวลา ตี 5 ถึง 2 ทุ่ม (05:00 - 20:00 น.)
-      return (curMins >= 5 * 60 && curMins <= 20 * 60);
+      // บันทึกเฉพาะช่วงเวลา 08:00 - 20:00 น. (8 โมงเช้า ถึง 2 ทุ่ม)
+      return (curMins >= 8 * 60 && curMins <= 20 * 60);
     },
 
     checkAndAutoLog(isInit = false) {
       // 1. ต้องผ่านการเริ่มต้นระบบ (isReady) และพ้นระยะ sync grace ก่อน
       if (!this.isReady || Date.now() < this.syncGraceUntil) return;
 
-      // 2. อยู่ในช่วงเวลาที่อนุญาตให้บันทึก (05:00 - 20:00 น.) หรือไม่
+      // 2. อยู่ในช่วงเวลาที่อนุญาตให้บันทึก (08:00 - 20:00 น.) หรือไม่
       if (!this.isLoggingHours(new Date())) {
-        return; // นอกเวลา (หลัง 2 ทุ่ม / 20:00 น. หรือก่อน ตี 5 / 05:00 น.) หยุดบันทึกอัตโนมัติ
+        return; // นอกเวลา (หลัง 2 ทุ่ม / 20:00 น. หรือก่อน 8 โมงเช้า / 08:00 น.) หยุดบันทึกอัตโนมัติ
       }
 
       const now = Date.now();
@@ -3733,7 +3734,7 @@
         return;
       }
 
-      // 4. บันทึกเฉพาะเมื่อเวลาผ่านไปครบ 1 ชั่วโมงเต็ม (3,600,000 ms) จากรอบล่าสุด
+      // 4. บันทึกอัตโนมัติตามรอบ LOG_INTERVAL_MS (ทุก 1 นาที เพื่อเก็บบันทึกค่าเรื่อยๆ ต่อเนื่อง)
       const elapsed = now - this.lastLogTime;
       if (elapsed >= this.LOG_INTERVAL_MS) {
         this.logCurrentSnapshot('auto');
@@ -3945,7 +3946,7 @@
       if (countdownEl) {
         const nowDate = new Date();
         if (!this.isLoggingHours(nowDate)) {
-          countdownEl.textContent = 'พักบันทึก (ตี 5 - 2 ทุ่ม)';
+          countdownEl.textContent = 'พักบันทึก (08:00 - 20:00 น.)';
           return;
         }
 
@@ -4497,7 +4498,7 @@
         const isAuto = r.source === 'auto';
         const isSample = r.source === 'sample';
         const badgeClass = isSample ? 'history-badge-source--sample' : (isAuto ? 'history-badge-source--auto' : 'history-badge-source--manual');
-        const badgeText = isSample ? 'ข้อมูลตัวอย่าง' : (isAuto ? 'อัตโนมัติ 1 ชั่วโมง' : 'บันทึกทันที');
+        const badgeText = isSample ? 'ข้อมูลตัวอย่าง' : (isAuto ? 'อัตโนมัติ' : 'บันทึกทันที');
 
         html += `
           <tr>
@@ -4539,7 +4540,7 @@
         const rawSheetData = [];
         
         rawSheetData.push(['มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตสุรินทร์ — ระบบควบคุมเครื่องปรับอากาศ']);
-        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (บันทึกทุก 1 ชั่วโมง ช่วง 05:00 - 20:00 น. ย้อนหลัง 30 วัน)']);
+        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (ช่วง 08:00 - 20:00 น. ย้อนหลัง 30 วัน)']);
         rawSheetData.push([
           `วันที่ส่งออกข้อมูล: ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH')}`,
           '',
@@ -4573,7 +4574,7 @@
             r.temp2 != null ? Number(r.temp2) : '',
             r.temp3 != null ? Number(r.temp3) : '',
             r.lux != null ? Number(r.lux) : '',
-            r.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที'
+            r.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'
           ]);
         });
 
@@ -4734,7 +4735,7 @@
         const s2 = r.temp2 != null ? r.temp2 : '';
         const s3 = r.temp3 != null ? r.temp3 : '';
         const lux = r.lux != null ? r.lux : '';
-        const src = r.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที';
+        const src = r.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที';
         csv += `${idx + 1},"${r.dateStr}","${r.timeStr}",${s1},${s2},${s3},${lux},"${src}","${r.iso}"\n`;
       });
 
@@ -5056,7 +5057,7 @@
                 ${this.activeSensors.s2 && pt.temp2 != null ? `<div style="color:#fb923c;">● เซนเซอร์ 2 (Outdoor): <strong>${Number(pt.temp2).toFixed(1)} °C</strong></div>` : ''}
                 ${this.activeSensors.s3 && pt.temp3 != null ? `<div style="color:#c084fc;">● เซนเซอร์ 3 (Inverter): <strong>${Number(pt.temp3).toFixed(1)} °C</strong></div>` : ''}
                 ${this.activeSensors.lux && pt.lux != null ? `<div style="color:#facc15;">● ความเข้มแสง (Lux): <strong>${Number(pt.lux).toLocaleString()} lx</strong></div>` : ''}
-                <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที'}</div>
+                <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'}</div>
               `;
 
               tooltipEl.style.display = 'block';

@@ -3386,17 +3386,16 @@
   }
 
   // ============================================================
-  //  SENSOR HISTORY MANAGER (30-DAY RETENTION)
+  //  SENSOR HISTORY MANAGER (1-HOUR INTERVAL & 30-DAY PURGE)
   //  Independent Telemetry Logger & Visualizer (Read-Only Observer)
-  //  บันทึกข้อมูลอัตโนมัติอย่างต่อเนื่อง ช่วงเวลา 08:00 - 20:00 น.
-  //  แม้ระบบ Modbus ไม่ทำงาน ก็ยังเก็บบันทึกค่าเซนเซอร์ที่ได้รับเรื่อยๆ
+  //  บันทึกข้อมูลทุก 1 ชั่วโมง ช่วงเวลา 05:00 - 20:00 น. ถึงแม้ระบบ Modbus ไม่ทำงาน ก็ยังเก็บบันทึกค่าเรื่อยๆ
   //  Does NOT touch or modify AC control system / PLC registers
   // ============================================================
   const SensorHistoryManager = {
     DB_NAME: 'AirSensorHistoryDB',
     STORE_NAME: 'sensor_records',
     DB_VERSION: 1,
-    LOG_INTERVAL_MS: 60 * 1000, // บันทึกอัตโนมัติทุก 1 นาที (60,000 ms) เก็บค่าเรื่อยๆ ต่อเนื่อง
+    LOG_INTERVAL_MS: 60 * 60 * 1000, // 1 ชั่วโมง (3,600,000 ms)
     RETENTION_MS: 30 * 24 * 60 * 60 * 1000, // 30 วัน (2,592,000,000 ms)
     STORAGE_KEY: 'aircon_sensor_history_records',
     LAST_LOG_KEY: 'aircon_sensor_last_log_time',
@@ -3688,7 +3687,7 @@
 
         this.render();
         this.updateCountdownUI();
-        addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
+        addLog('info', `[ประวัติเซนเซอร์] บันทึกข้อมูลจริง (${source === 'auto' ? 'อัตโนมัติ 1 ชั่วโมง (ช่วง 05:00-20:00)' : 'บันทึกทันที'}): S1=${vals.temp1}°C, S2=${vals.temp2}°C, S3=${vals.temp3}°C, Lux=${vals.lux?.toLocaleString()}`);
 
         if (source === 'manual') {
           showToast('success', 'บันทึกค่าอุณหภูมิและแสงจริงสำเร็จ!');
@@ -3699,46 +3698,84 @@
     },
 
     isLoggingHours(date = new Date()) {
-      const curMins = date.getHours() * 60 + date.getMinutes();
-      // บันทึกเฉพาะช่วงเวลา 08:00 - 20:00 น. (8 โมงเช้า ถึง 2 ทุ่ม)
-      return (curMins >= 8 * 60 && curMins <= 20 * 60);
+      const h = date.getHours();
+      // อนุญาตช่วงเวลา 05:00 - 20:00 น.
+      // ตั้งแต่ชั่วโมงที่ 5 (05:00) จนถึงสิ้นสุดชั่วโมงที่ 19 (19:59)
+      if (h >= 5 && h < 20) return true;
+      // ชั่วโมงที่ 20 (20:00 น.) อนุญาตเฉพาะต้นชั่วโมงนาทีที่ 0 ถึง 2 (20:00 - 20:02) เพื่อบันทึกรอบ 20:00 ได้ครบถ้วน
+      if (h === 20 && date.getMinutes() <= 2) return true;
+      return false;
+    },
+
+    getNextScheduledDate(now = new Date()) {
+      // คำนวณรอบบันทึกถัดไป ทุก 1 ชั่วโมง ช่วง 05:00 - 20:00 น.
+      const target = new Date(now.getTime());
+      target.setMinutes(0, 0, 0);
+
+      const curHour = now.getHours();
+
+      // ก่อน 05:00 น. (เช่น 00:00 - 04:59) -> รอบถัดไปคือ วันนี้เวลา 05:00 น.
+      if (curHour < 5) {
+        target.setHours(5, 0, 0, 0);
+        return target;
+      }
+
+      // ระหว่าง 05:00 ถึง 19:59 (เช่น 05:20 -> 06:00, 19:15 -> 20:00) -> ต้นชั่วโมงถัดไป
+      if (curHour < 20) {
+        target.setHours(curHour + 1, 0, 0, 0);
+        return target;
+      }
+
+      // ตั้งแต่ 20:00 น. เป็นต้นไป (20:00 - 23:59) -> สิ้นสุดรอบของวันนี้แล้ว รอบถัดไปคือ พรุ่งนี้เวลา 05:00 น.
+      target.setDate(target.getDate() + 1);
+      target.setHours(5, 0, 0, 0);
+      return target;
     },
 
     checkAndAutoLog(isInit = false) {
       // 1. ต้องผ่านการเริ่มต้นระบบ (isReady) และพ้นระยะ sync grace ก่อน
       if (!this.isReady || Date.now() < this.syncGraceUntil) return;
 
-      // 2. อยู่ในช่วงเวลาที่อนุญาตให้บันทึก (08:00 - 20:00 น.) หรือไม่
-      if (!this.isLoggingHours(new Date())) {
-        return; // นอกเวลา (หลัง 2 ทุ่ม / 20:00 น. หรือก่อน 8 โมงเช้า / 08:00 น.) หยุดบันทึกอัตโนมัติ
+      const now = new Date();
+
+      // 2. ตรวจสอบว่าอยู่ในช่วงเวลาบันทึก 05:00 - 20:00 น. หรือไม่
+      if (!this.isLoggingHours(now)) {
+        return;
       }
 
-      const now = Date.now();
+      // 3. ป้องกันการบันทึกซ้ำ: ตรวจสอบว่าชั่วโมงนี้ถูกบันทึก auto ไปแล้วหรือยัง
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth();
+      const curDate = now.getDate();
+      const curHour = now.getHours();
+
+      const alreadyLoggedThisHour = this.records.some((r) => {
+        if (r.source !== 'auto') return false;
+        const rDate = new Date(r.timestamp);
+        return rDate.getFullYear() === curYear &&
+               rDate.getMonth() === curMonth &&
+               rDate.getDate() === curDate &&
+               rDate.getHours() === curHour;
+      });
+
+      if (alreadyLoggedThisHour) {
+        return; // ชั่วโมงนี้บันทึกเรียบร้อยแล้ว ไม่สร้างข้อมูลซ้ำเด็ดขาด แม้จะรีเฟรชหน้าจอกี่ครั้งก็ตาม
+      }
+
+      // 4. ป้องกันการบันทึกเมื่อรีเว็บระหว่างชั่วโมง:
+      // จะบันทึกอัตโนมัติเฉพาะเมื่อถึงเวลาต้นชั่วโมง (นาทีที่ 0 ถึง 2 ของชั่วโมง)
+      if (now.getMinutes() > 2) {
+        return; // ยังไม่ถึงเวลาต้นชั่วโมง (:00) รอให้ถึงรอบถัดไป ไม่บันทึกตอนรีเฟรช
+      }
+
+      // 5. ตรวจสอบว่ามีข้อมูลเซนเซอร์จริงเข้ามาหรือไม่ (ถึงแม้ Modbus ไม่ทำงาน แต่ ESP32 ส่ง Lux หรือเซนเซอร์อื่นเข้ามา ก็บันทึกได้)
       const vals = this.getCurrentSensorValues();
       if (vals.temp1 == null && vals.temp2 == null && vals.temp3 == null && vals.lux == null) {
         return;
       }
 
-      // 3. ป้องกันการบันทึกเมื่อรีเว็บ:
-      // ถ้ามีประวัติเดิมในระบบอยู่แล้ว ให้ยึดเวลาล่าสุดเดิมเป็น lastLogTime ทันที ห้ามสร้างค่าใหม่
-      if (this.lastLogTime === 0 && this.records.length > 0) {
-        this.lastLogTime = this.records[this.records.length - 1].timestamp;
-        try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
-      }
-
-      // ถ้าไม่มีข้อมูลประวัติใดๆ เลยทั้งระบบ (0 รายการจริงๆ) และพ้นระยะ 3 วินาทีแรก
-      if (this.lastLogTime === 0) {
-        this.lastLogTime = now;
-        try { localStorage.setItem(this.LAST_LOG_KEY, String(now)); } catch (e) {}
-        this.logCurrentSnapshot('auto');
-        return;
-      }
-
-      // 4. บันทึกอัตโนมัติตามรอบ LOG_INTERVAL_MS (ทุก 1 นาที เพื่อเก็บบันทึกค่าเรื่อยๆ ต่อเนื่อง)
-      const elapsed = now - this.lastLogTime;
-      if (elapsed >= this.LOG_INTERVAL_MS) {
-        this.logCurrentSnapshot('auto');
-      }
+      // 6. บันทึกข้อมูลอัตโนมัติสำหรับชั่วโมงนี้
+      this.logCurrentSnapshot('auto');
     },
 
     onTelemetry() {
@@ -3945,26 +3982,26 @@
 
       if (countdownEl) {
         const nowDate = new Date();
+        const nextTarget = this.getNextScheduledDate(nowDate);
+        const diff = Math.max(0, nextTarget.getTime() - nowDate.getTime());
+
+        // ตรวจสอบว่าอยู่ในช่วงเวลาบันทึก (05:00 - 20:00 น.) หรือไม่
         if (!this.isLoggingHours(nowDate)) {
-          countdownEl.textContent = 'พักบันทึก (08:00 - 20:00 น.)';
-          return;
-        }
-
-        if (this.lastLogTime === 0) {
-          if (this.records.length > 0) {
-            this.lastLogTime = this.records[this.records.length - 1].timestamp;
-            try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch (e) {}
+          // อยู่นอกช่วงเวลาบันทึก (หลัง 20:00 น. หรือก่อน 05:00 น.)
+          const hours = Math.floor(diff / 3600000);
+          const mins = Math.floor((diff % 3600000) / 60000);
+          if (hours > 0) {
+            countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${hours}ชม. ${mins}น.)`;
           } else {
-            countdownEl.textContent = 'พร้อมบันทึก';
-            return;
+            countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${mins}น.)`;
           }
+        } else {
+          // อยู่ในช่วงเวลาบันทึก 05:00 - 20:00 น. นับถอยหลังสู่นาทีที่ :00 ของชั่วโมงถัดไปอย่างแม่นยำ
+          // รีเฟรชหน้าเว็บเวลาจะไม่เริ่มนับใหม่ และค่าจะตรงกันทุกเครื่อง 100%
+          const mins = Math.floor(diff / 60000);
+          const secs = Math.floor((diff % 60000) / 1000);
+          countdownEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
-
-        const nextTime = this.lastLogTime + this.LOG_INTERVAL_MS;
-        const diff = Math.max(0, nextTime - now);
-        const mins = Math.floor(diff / 60000);
-        const secs = Math.floor((diff % 60000) / 1000);
-        countdownEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
       }
     },
 
@@ -4498,7 +4535,7 @@
         const isAuto = r.source === 'auto';
         const isSample = r.source === 'sample';
         const badgeClass = isSample ? 'history-badge-source--sample' : (isAuto ? 'history-badge-source--auto' : 'history-badge-source--manual');
-        const badgeText = isSample ? 'ข้อมูลตัวอย่าง' : (isAuto ? 'อัตโนมัติ' : 'บันทึกทันที');
+        const badgeText = isSample ? 'ข้อมูลตัวอย่าง' : (isAuto ? 'อัตโนมัติ 1 ชั่วโมง' : 'บันทึกทันที');
 
         html += `
           <tr>
@@ -4540,7 +4577,7 @@
         const rawSheetData = [];
         
         rawSheetData.push(['มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตสุรินทร์ — ระบบควบคุมเครื่องปรับอากาศ']);
-        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (ช่วง 08:00 - 20:00 น. ย้อนหลัง 30 วัน)']);
+        rawSheetData.push(['รายงานบันทึกประวัติค่าอุณหภูมิและความเข้มแสง (บันทึกทุก 1 ชั่วโมง ช่วง 05:00 - 20:00 น. ย้อนหลัง 30 วัน)']);
         rawSheetData.push([
           `วันที่ส่งออกข้อมูล: ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH')}`,
           '',
@@ -4574,7 +4611,7 @@
             r.temp2 != null ? Number(r.temp2) : '',
             r.temp3 != null ? Number(r.temp3) : '',
             r.lux != null ? Number(r.lux) : '',
-            r.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'
+            r.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที'
           ]);
         });
 
@@ -4735,7 +4772,7 @@
         const s2 = r.temp2 != null ? r.temp2 : '';
         const s3 = r.temp3 != null ? r.temp3 : '';
         const lux = r.lux != null ? r.lux : '';
-        const src = r.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที';
+        const src = r.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที';
         csv += `${idx + 1},"${r.dateStr}","${r.timeStr}",${s1},${s2},${s3},${lux},"${src}","${r.iso}"\n`;
       });
 
@@ -5057,7 +5094,7 @@
                 ${this.activeSensors.s2 && pt.temp2 != null ? `<div style="color:#fb923c;">● เซนเซอร์ 2 (Outdoor): <strong>${Number(pt.temp2).toFixed(1)} °C</strong></div>` : ''}
                 ${this.activeSensors.s3 && pt.temp3 != null ? `<div style="color:#c084fc;">● เซนเซอร์ 3 (Inverter): <strong>${Number(pt.temp3).toFixed(1)} °C</strong></div>` : ''}
                 ${this.activeSensors.lux && pt.lux != null ? `<div style="color:#facc15;">● ความเข้มแสง (Lux): <strong>${Number(pt.lux).toLocaleString()} lx</strong></div>` : ''}
-                <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ' : 'บันทึกทันที'}</div>
+                <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">🏷️ บันทึก: ${pt.source === 'auto' ? 'อัตโนมัติ (1 ชั่วโมง)' : 'บันทึกทันที'}</div>
               `;
 
               tooltipEl.style.display = 'block';

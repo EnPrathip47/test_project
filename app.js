@@ -3996,7 +3996,13 @@
           if (hours > 0) {
             countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${hours}ชม. ${mins}น.)`;
           } else {
-            countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${mins}น.)`;
+          // ในช่วงเวลา 05:00 - 20:00 น. แสดงเวลารอบถัดไป (ต้นชั่วโมง :00) ชัดเจน
+          const targetH = nextTarget.getHours();
+          const targetStr = ${String(targetH).padStart(2, '0')}:00 น.;
+          const mins = Math.floor(diff / 60000);
+          const secs = Math.floor((diff % 60000) / 1000);
+          countdownEl.textContent = ${targetStr} (อีก  นาที);
+        }น.)`;
           }
         } else {
           // อยู่ในช่วงเวลาบันทึก 05:00 - 20:00 น. นับถอยหลังสู่นาทีที่ :00 ของชั่วโมงถัดไปอย่างแม่นยำ
@@ -4797,14 +4803,12 @@
 
     async generateSample30DayData(silent = false) {
       if (!silent) {
-        if (!confirm('ต้องการสร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน (บันทึกทุก 30 นาที รวม 1,440 รายการ) ที่อิงฐานค่าจริงของเซนเซอร์เพื่อวิเคราะห์ใช่หรือไม่?')) {
+        if (!confirm('ต้องการสร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน (บันทึกทุก 1 ชั่วโมง เฉพาะช่วง 05:00 - 20:00 น. วันละ 16 รายการ รวม 480 รายการ)?')) {
           return;
         }
       }
 
-      const now = Date.now();
-      const interval = this.LOG_INTERVAL_MS;
-      const totalPoints = 30 * 48; // 1,440 รายการ (30 วัน)
+      const now = new Date();
       const sampleList = [];
       const currentLive = this.getCurrentSensorValues();
       const baseIndoor = (currentLive.temp1 != null && !isNaN(currentLive.temp1)) ? currentLive.temp1 : 28.5;
@@ -4812,51 +4816,45 @@
       const baseInverter = (currentLive.temp3 != null && !isNaN(currentLive.temp3)) ? currentLive.temp3 : 26.5;
       const baseLux = (currentLive.lux != null && !isNaN(currentLive.lux)) ? currentLive.lux : 1500;
 
-      for (let i = totalPoints - 1; i >= 0; i--) {
-        const t = new Date(now - i * interval);
-        const hour = t.getHours() + t.getMinutes() / 60;
+      // สร้างข้อมูลย้อนหลัง 30 วัน โดยในแต่ละวันสร้างเฉพาะรอบ 05:00 - 20:00 น. (16 รอบต่อวัน)
+      for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        const dateStr = ${dd}//;
 
-        // วงรอบอุณหภูมิตามแสงอาทิตย์ อิงฐานค่าจริงจากเซนเซอร์ Real-time
-        const sunFactor = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
-        let outdoorTemp = parseFloat((baseOutdoor - 2.0 + sunFactor * 4.0 + (Math.random() - 0.5) * 0.8).toFixed(1));
-        let indoorTemp = parseFloat((baseIndoor - 0.5 + (sunFactor > 0 ? 0.8 : 0.2) + (Math.random() - 0.5) * 0.4).toFixed(1));
-        let inverterTemp = parseFloat((baseInverter - 0.5 + sunFactor * 1.0 + (Math.random() - 0.5) * 0.4).toFixed(1));
-        let lux = Math.round(sunFactor > 0 ? (baseLux * 0.4 + sunFactor * baseLux * 0.8 + (Math.random() - 0.5) * 50) : (15 + Math.random() * 20));
+        for (let h = 5; h <= 20; h++) {
+          const recDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0);
+          if (recDate.getTime() > now.getTime()) {
+            continue; // ยังไม่ถึงเวลานี้ในวันนี้
+          }
 
-        // จุดล่าสุดในตาราง (i === 0) ใช้ค่าจริง Real-time ล่าสุดจากเซนเซอร์ 100%
-        if (i === 0) {
-          indoorTemp = currentLive.temp1;
-          outdoorTemp = currentLive.temp2;
-          inverterTemp = currentLive.temp3;
-          lux = currentLive.lux;
+          const sunFactor = Math.max(0, Math.sin(((h - 6) / 12) * Math.PI));
+          let outdoorTemp = parseFloat((baseOutdoor - 2.0 + sunFactor * 4.0 + (Math.random() - 0.5) * 0.8).toFixed(1));
+          let indoorTemp = parseFloat((baseIndoor - 0.5 + (sunFactor > 0 ? 0.8 : 0.2) + (Math.random() - 0.5) * 0.4).toFixed(1));
+          let inverterTemp = parseFloat((baseInverter - 0.5 + sunFactor * 1.0 + (Math.random() - 0.5) * 0.4).toFixed(1));
+          let lux = Math.round(sunFactor > 0 ? (baseLux * 0.4 + sunFactor * baseLux * 0.8 + (Math.random() - 0.5) * 50) : (15 + Math.random() * 20));
+
+          const timeStr = ${String(h).padStart(2, '0')}:00:00;
+
+          sampleList.push({
+            timestamp: recDate.getTime(),
+            iso: recDate.toISOString(),
+            dateStr,
+            timeStr,
+            temp1: indoorTemp,
+            temp2: outdoorTemp,
+            temp3: inverterTemp,
+            lux: Math.max(0, lux),
+            source: 'sample',
+          });
         }
-
-        const dd = String(t.getDate()).padStart(2, '0');
-        const mm = String(t.getMonth() + 1).padStart(2, '0');
-        const yyyy = t.getFullYear();
-        const dateStr = `${dd}/${mm}/${yyyy}`;
-
-        const hh = String(t.getHours()).padStart(2, '0');
-        const mi = String(t.getMinutes()).padStart(2, '0');
-        const ss = String(t.getSeconds()).padStart(2, '0');
-        const timeStr = `${hh}:${mi}:${ss}`;
-
-        sampleList.push({
-          timestamp: t.getTime(),
-          iso: t.toISOString(),
-          dateStr,
-          timeStr,
-          temp1: indoorTemp,
-          temp2: outdoorTemp,
-          temp3: inverterTemp,
-          lux: Math.max(0, lux),
-          source: 'sample',
-        });
       }
 
       this.records = sampleList;
-      this.lastLogTime = now;
-      try { localStorage.setItem(this.LAST_LOG_KEY, String(now)); } catch(e){}
+      this.lastLogTime = Date.now();
+      try { localStorage.setItem(this.LAST_LOG_KEY, String(this.lastLogTime)); } catch(e){}
 
       if (this.db) {
         try {
@@ -4873,8 +4871,8 @@
 
       this.render();
       if (!silent) {
-        showToast('success', 'สร้างข้อมูลย้อนหลัง 30 วัน (1,440 รายการ) สำเร็จ!');
-        addLog('info', '[ประวัติเซนเซอร์] สร้างข้อมูลย้อนหลัง 30 วัน (1,440 รายการ) เรียบร้อยแล้ว');
+        showToast('success', สร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน ( รายการ เฉพาะ 05:00 - 20:00 น.) สำเร็จ!);
+        addLog('info', [ประวัติเซนเซอร์] สร้างข้อมูลตัวอย่าง 05:00 - 20:00 ทุก 1 ชั่วโมง ( รายการ) เรียบร้อย);
       }
     },
 

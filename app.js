@@ -3611,7 +3611,7 @@
     async sanitizeDummyRecords() {
       if (!this.records || this.records.length === 0) return;
 
-      // กรองเฉพาะข้อมูล mock ดั้งเดิมที่เป็นตัวเลขจำลองตายตัว หรือชุด sample mock เดิมที่ outdoor สูงผิดปกติ (45-60°C)
+      // กรองเฉพาะข้อมูล mock ดั้งเดิม หรือข้อมูลที่บันทึกซ้ำทุก 1 นาทีในอดีต
       const isLegacyMockPlaceholder = (r) => {
         if (!r) return true;
         if (r.temp1 === 25.0 && r.temp2 === 28.5 && r.temp3 === 16.0) return true;
@@ -3620,20 +3620,43 @@
         return false;
       };
 
-      const hasLegacy = this.records.some(isLegacyMockPlaceholder);
-      if (!hasLegacy) return;
+      const initialCount = this.records.length;
+      const seenHours = new Set();
+      const cleaned = [];
 
-      this.records = this.records.filter((r) => !isLegacyMockPlaceholder(r));
+      for (const r of this.records) {
+        if (isLegacyMockPlaceholder(r)) continue;
+        const d = new Date(r.timestamp);
+        const h = d.getHours();
+        // เงื่อนไข: บันทึกเฉพาะ 05:00 - 20:00 น.
+        if (h < 5 || h > 20) continue;
 
-      if (this.db) {
-        try {
-          const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
-          const store = tx.objectStore(this.STORE_NAME);
-          store.clear();
-          this.records.forEach((r) => store.put(r));
-        } catch (e) { }
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${h}`;
+        if (seenHours.has(key)) {
+          continue; // หากมีรายการของชั่วโมงนี้แล้ว ข้ามรายการระดับนาทีที่บันทึกซ้ำ
+        }
+        seenHours.add(key);
+
+        // ล็อค timeStr ให้อยู่ในรูป HH:00:00 เสมอ
+        r.timeStr = `${String(h).padStart(2, '0')}:00:00`;
+        cleaned.push(r);
       }
-      this.syncFallback();
+
+      cleaned.sort((a, b) => a.timestamp - b.timestamp);
+
+      if (cleaned.length !== initialCount) {
+        this.records = cleaned;
+        if (this.db) {
+          try {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            store.clear();
+            this.records.forEach((r) => store.put(r));
+          } catch (e) { }
+        }
+        this.syncFallback();
+        console.log(`[SensorHistory] Cleaned ${initialCount - cleaned.length} minute-level / invalid records. Remaining: ${cleaned.length}`);
+      }
     },
 
     async logCurrentSnapshot(source = 'manual') {
@@ -3665,11 +3688,21 @@
         const hh = String(now.getHours()).padStart(2, '0');
         const mi = String(now.getMinutes()).padStart(2, '0');
         const ss = String(now.getSeconds()).padStart(2, '0');
-        const timeStr = `${hh}:${mi}:${ss}`;
+
+        let logDate = now;
+        let timeStr = `${hh}:${mi}:${ss}`;
+        let recTimestamp = timestamp;
+
+        if (source === 'auto') {
+          // ล็อคเวลาให้ตรงกับต้นชั่วโมง :00:00 เป๊ะตามข้อกำหนด 1 ชั่วโมง
+          logDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+          recTimestamp = logDate.getTime();
+          timeStr = `${hh}:00:00`;
+        }
 
         const rec = {
-          timestamp,
-          iso: now.toISOString(),
+          timestamp: recTimestamp,
+          iso: logDate.toISOString(),
           dateStr,
           timeStr,
           temp1: vals.temp1,
@@ -3750,7 +3783,6 @@
       const curHour = now.getHours();
 
       const alreadyLoggedThisHour = this.records.some((r) => {
-        if (r.source !== 'auto') return false;
         const rDate = new Date(r.timestamp);
         return rDate.getFullYear() === curYear &&
                rDate.getMonth() === curMonth &&
@@ -3996,20 +4028,15 @@
           if (hours > 0) {
             countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${hours}ชม. ${mins}น.)`;
           } else {
-          // ในช่วงเวลา 05:00 - 20:00 น. แสดงเวลารอบถัดไป (ต้นชั่วโมง :00) ชัดเจน
-          const targetH = nextTarget.getHours();
-          const targetStr = ${String(targetH).padStart(2, '0')}:00 น.;
-          const mins = Math.floor(diff / 60000);
-          const secs = Math.floor((diff % 60000) / 1000);
-          countdownEl.textContent = ${targetStr} (อีก  นาที);
-        }น.)`;
+            countdownEl.textContent = `เริ่ม 05:00 น. (อีก ${mins}น.)`;
           }
         } else {
-          // อยู่ในช่วงเวลาบันทึก 05:00 - 20:00 น. นับถอยหลังสู่นาทีที่ :00 ของชั่วโมงถัดไปอย่างแม่นยำ
-          // รีเฟรชหน้าเว็บเวลาจะไม่เริ่มนับใหม่ และค่าจะตรงกันทุกเครื่อง 100%
+          // ในช่วงเวลา 05:00 - 20:00 น. แสดงเวลารอบถัดไป (ต้นชั่วโมง :00) ชัดเจน เช่น "10:00 น. (อีก 28 นาที)"
+          const targetH = nextTarget.getHours();
+          const targetStr = `${String(targetH).padStart(2, '0')}:00 น.`;
           const mins = Math.floor(diff / 60000);
           const secs = Math.floor((diff % 60000) / 1000);
-          countdownEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+          countdownEl.textContent = `${targetStr} (อีก ${mins} นาที)`;
         }
       }
     },
@@ -4822,7 +4849,7 @@
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const yyyy = d.getFullYear();
-        const dateStr = ${dd}//;
+        const dateStr = `${dd}/${mm}/${yyyy}`;
 
         for (let h = 5; h <= 20; h++) {
           const recDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0);
@@ -4836,7 +4863,7 @@
           let inverterTemp = parseFloat((baseInverter - 0.5 + sunFactor * 1.0 + (Math.random() - 0.5) * 0.4).toFixed(1));
           let lux = Math.round(sunFactor > 0 ? (baseLux * 0.4 + sunFactor * baseLux * 0.8 + (Math.random() - 0.5) * 50) : (15 + Math.random() * 20));
 
-          const timeStr = ${String(h).padStart(2, '0')}:00:00;
+          const timeStr = `${String(h).padStart(2, '0')}:00:00`;
 
           sampleList.push({
             timestamp: recDate.getTime(),
@@ -4871,8 +4898,8 @@
 
       this.render();
       if (!silent) {
-        showToast('success', สร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน ( รายการ เฉพาะ 05:00 - 20:00 น.) สำเร็จ!);
-        addLog('info', [ประวัติเซนเซอร์] สร้างข้อมูลตัวอย่าง 05:00 - 20:00 ทุก 1 ชั่วโมง ( รายการ) เรียบร้อย);
+        showToast('success', `สร้างข้อมูลตัวอย่างย้อนหลัง 30 วัน (${sampleList.length} รายการ เฉพาะ 05:00 - 20:00 น.) สำเร็จ!`);
+        addLog('info', `[ประวัติเซนเซอร์] สร้างข้อมูลตัวอย่าง 05:00 - 20:00 ทุก 1 ชั่วโมง (${sampleList.length} รายการ) เรียบร้อย`);
       }
     },
 

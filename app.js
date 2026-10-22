@@ -3904,6 +3904,9 @@
       let added = 0;
       for (const r of incomingList) {
         if (r && r.timestamp && !existingTimestamps.has(r.timestamp)) {
+          if (!r.iso) {
+            try { r.iso = new Date(r.timestamp).toISOString(); } catch (e) { r.iso = ''; }
+          }
           this.records.push(r);
           existingTimestamps.add(r.timestamp);
           added++;
